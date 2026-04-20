@@ -1,0 +1,104 @@
+# 몽골(MN) 크롤링 소스 메타 — 3계층 아키텍처
+country: "MN"
+currency: "MNT"
+
+sources:
+  # ── Tier 1: 규제·인허가 ──────────────────────────────────────────────────────
+
+  mmra_regulatory:
+    tier: 1
+    url_seed: "https://mmra.gov.mn"
+    access_method: playwright
+    rate_limit_qps: 0.3
+    cron_slot: "0 22 * * *"
+    note: "MMRA 규제청 — 법령 개정안·안전성 서한·광고 허가 내역 PDF/Word 파싱"
+
+  licemed_registry:
+    tier: 1
+    url_seed: "https://licemed.mohs.mn"
+    access_method: playwright
+    rate_limit_qps: 0.5
+    cron_slot: "30 22 * * *"
+    note: "국가의약품 통합 등록 DB — SPC·인허가 만료일·제조사·수입유통사 매핑 (4,500+ 품목)"
+
+  # ── Tier 2: 약가·공공조달 ───────────────────────────────────────────────────
+
+  emd_pricing:
+    tier: 2
+    url_seed: "https://emd.gov.mn/pages/13"
+    access_method: html_static
+    rate_limit_qps: 0.5
+    cron_slot: "0 23 * * 1"
+    note: "보건의료보험청 — 필수의약품 최대소매가(MNT) + HIF 상환액 PDF/Excel 파싱"
+
+  tender_procurement:
+    tier: 2
+    url_seed: "https://tender.gov.mn"
+    access_method: playwright
+    rate_limit_qps: 0.3
+    cron_slot: "0 0 * * 2"
+    note: "국가전자조달 — 의약품 카테고리 입찰공고·낙찰자·계약금액 OCDS 파싱"
+
+  ecepp_international:
+    tier: 2
+    url_seed: "https://ecepp.ebrd.com"
+    access_method: html_static
+    rate_limit_qps: 0.2
+    cron_slot: "0 1 * * 3"
+    note: "EBRD 국제조달 포털 — ADB/EBRD 몽골 보건 프로젝트 달러 기반 국제 입찰"
+
+  # ── Tier 3: 거시통계·유통사 ─────────────────────────────────────────────────
+
+  customs_hscode:
+    tier: 3
+    url_seed: "https://gaali.mn/en/hscode"
+    access_method: html_static
+    rate_limit_qps: 0.2
+    cron_slot: "0 2 * * 1"
+    note: "관세청 — HS Code 3004 의약품 수입 물량·금액·관세율 월별 시계열"
+
+  nso_statistics:
+    tier: 3
+    url_seed: "https://www.1212.mn"
+    access_method: html_static
+    rate_limit_qps: 0.3
+    cron_slot: "0 3 * * 1"
+    note: "국가통계위원회 — 질병·사망률·인구 구조 (COPD·심혈관 유병률 수요 예측용)"
+
+  monos_distributor:
+    tier: 3
+    url_seed: "https://monos.mn"
+    access_method: playwright
+    rate_limit_qps: 0.3
+    cron_slot: "0 4 * * 3"
+    note: "Monos Group — 시장 점유율 1위 유통사, 8,000+ 품목 카탈로그, 경쟁 파이프라인 분석"
+
+  meic_distributor:
+    tier: 3
+    url_seed: "https://pharmmarket.mn"
+    access_method: html_static
+    rate_limit_qps: 0.3
+    cron_slot: "15 4 * * 3"
+    note: "MEIC Pharmmarket — 1923년 설립 역사적 유통사, 전국 소매망·80개국 파트너"
+
+  gobigate_distributor:
+    tier: 3
+    url_seed: "https://gobigate.com"
+    access_method: playwright
+    rate_limit_qps: 0.2
+    cron_slot: "30 4 * * 3"
+    note: "Gobi Gate Pharma — GMP 전문의약품 수입 특화 (항암·심혈관·당뇨), B2B 파트너 평가"
+
+  lenusmed_distributor:
+    tier: 3
+    url_seed: "https://lenusmed.mn"
+    access_method: html_static
+    rate_limit_qps: 0.3
+    cron_slot: "45 4 * * 3"
+    note: "Lenus Med — 2020년 신흥 유통사, 신규 해외 제조사 발굴 적극적, 제휴 문의 모니터링"
+
+  basic_files:
+    tier: 2
+    access_method: local_pdf
+    path: "datas/basic_files/"
+    note: "제품 브로슈어 — 임상 근거 및 제품 규격 (8품목 공통)"
