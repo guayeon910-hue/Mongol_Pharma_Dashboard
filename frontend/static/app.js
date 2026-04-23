@@ -1,5 +1,5 @@
 /**
- * UPharma Export AI — 싱가포르 대시보드 스크립트
+ * UPharma Export AI — 몽골 대시보드 스크립트
  * ═══════════════════════════════════════════════════════════════
  *
  * 기능 목록:
@@ -26,7 +26,7 @@
  *   U4  PDF 카드 3가지 상태
  *   U6  재분석 버튼
  *   N1  탭 전환 (AU 프론트 기반)
- *   N2  환율 카드 (yfinance SGD/KRW)
+ *   N2  환율 카드 (yfinance MNT/KRW)
  *   N3  To-Do 리스트 (localStorage)
  *   N4  보고서 탭 자동 등록
  * ═══════════════════════════════════════════════════════════════
@@ -40,31 +40,31 @@
 
 /** product_id → INN 표시명 */
 const INN_MAP = {
-  SG_hydrine_hydroxyurea_500:  'Hydroxyurea 500mg',
-  SG_gadvoa_gadobutrol_604:    'Gadobutrol 604mg',
-  SG_sereterol_activair:       'Fluticasone / Salmeterol',
-  SG_omethyl_omega3_2g:        'Omega-3 EE 2g',
-  SG_rosumeg_combigel:         'Rosuvastatin + Omega-3',
-  SG_atmeg_combigel:           'Atorvastatin + Omega-3',
-  SG_ciloduo_cilosta_rosuva:   'Cilostazol + Rosuvastatin',
-  SG_gastiin_cr_mosapride:     'Mosapride CR',
+  MN_hydrine_hydroxyurea_500:  'Hydroxyurea 500mg',
+  MN_gadvoa_gadobutrol_604:    'Gadobutrol 604mg',
+  MN_sereterol_activair:       'Fluticasone / Salmeterol',
+  MN_omethyl_omega3_2g:        'Omega-3 EE 2g',
+  MN_rosumeg_combigel:         'Rosuvastatin + Omega-3',
+  MN_atmeg_combigel:           'Atorvastatin + Omega-3',
+  MN_ciloduo_cilosta_rosuva:   'Cilostazol + Rosuvastatin',
+  MN_gastiin_cr_mosapride:     'Mosapride CR',
 };
 
 const LEGACY_PRODUCT_KEY_MAP = {
-  MN_ciloduo_cilosta_rosuva: 'SG_ciloduo_cilosta_rosuva',
-  MN_rosumeg_combigel: 'SG_rosumeg_combigel',
-  MN_atmeg_combigel: 'SG_atmeg_combigel',
-  MN_gastiin_cr_mosapride: 'SG_gastiin_cr_mosapride',
-  MN_omethyl_omega3_2g: 'SG_omethyl_omega3_2g',
-  MN_hydrine_hydroxyurea: 'SG_hydrine_hydroxyurea_500',
-  MN_hydrine_hydroxyurea_500: 'SG_hydrine_hydroxyurea_500',
-  MN_sereterol_activair: 'SG_sereterol_activair',
-  MN_gadvoa_gadobutrol: 'SG_gadvoa_gadobutrol_604',
-  MN_gadvoa_gadobutrol_604: 'SG_gadvoa_gadobutrol_604',
+  'sereterol-activair': 'MN_sereterol_activair',
+  'omethyl-cutielet': 'MN_omethyl_omega3_2g',
+  hydrine: 'MN_hydrine_hydroxyurea_500',
+  'gadvoa-inj': 'MN_gadvoa_gadobutrol_604',
+  'rosumeg-combigel': 'MN_rosumeg_combigel',
+  'atmeg-combigel': 'MN_atmeg_combigel',
+  ciloduo: 'MN_ciloduo_cilosta_rosuva',
+  'gastiin-cr': 'MN_gastiin_cr_mosapride',
+  MN_hydrine_hydroxyurea: 'MN_hydrine_hydroxyurea_500',
+  MN_gadvoa_gadobutrol: 'MN_gadvoa_gadobutrol_604',
 };
 
 function normalizeProductKey(productKey) {
-  return LEGACY_PRODUCT_KEY_MAP[productKey] || productKey || 'SG_sereterol_activair';
+  return LEGACY_PRODUCT_KEY_MAP[productKey] || productKey || 'MN_sereterol_activair';
 }
 
 /**
@@ -100,8 +100,88 @@ function goTab(id, el) {
   document.querySelectorAll('.tab, .topbar-tab').forEach(t => t.classList.remove('on'));
   const page = document.getElementById(id);
   if (page) page.classList.add('on');
-  if (el)   el.classList.add('on');
+  const tabEl = el || document.getElementById('tab-' + id);
+  if (tabEl) tabEl.classList.add('on');
+  if (id === 'preview') _initPreviewPage();
+  if (id === 'main') {
+    populateP2ReportSelect();
+    _syncP3ReportOptions();
+  }
 }
+
+function goPreviewTab(id, el) {
+  goTab(id, el);
+}
+
+/* 메인 프리뷰 지도 + 뉴스 — 사우디 UI 형식, 몽골 데이터 */
+let _previewMap = null;
+
+function _initPreviewPage() {
+  if (_previewMap) {
+    setTimeout(() => _previewMap.invalidateSize(), 50);
+    return;
+  }
+  const el = document.getElementById('preview-map');
+  if (!el || typeof L === 'undefined') return;
+  if (el.offsetWidth === 0) {
+    setTimeout(_initPreviewPage, 180);
+    return;
+  }
+  _previewMap = L.map('preview-map', { zoomControl: true }).setView([46.8625, 103.8467], 5);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap | © Leaflet',
+  }).addTo(_previewMap);
+  const icon = L.divIcon({
+    className: '',
+    html: '<div style="width:13px;height:13px;background:#173f78;border:2px solid #fff;border-radius:50%;box-shadow:0 1px 5px rgba(0,0,0,.35);"></div>',
+    iconSize: [13, 13],
+    iconAnchor: [6, 6],
+  });
+  L.marker([47.8864, 106.9057], { icon })
+    .addTo(_previewMap)
+    .bindPopup('<b>Ulaanbaatar</b><br>몽골 수도')
+    .openPopup();
+}
+
+async function loadPreviewNews() {
+  const listEl = document.getElementById('preview-news-list');
+  const btn = document.getElementById('btn-preview-news-refresh');
+  if (!listEl) return;
+  if (btn) { btn.disabled = true; btn.textContent = '조회 중…'; }
+  listEl.innerHTML = '<div class="irow" style="color:var(--muted);font-size:12px;text-align:center;padding:16px 0;">뉴스 로드 중…</div>';
+  try {
+    const res = await fetch('/api/mn/news');
+    const data = await res.json();
+    const items = Array.isArray(data.items) ? data.items : [];
+    if (!items.length) {
+      listEl.innerHTML = '<div class="irow"><div class="tit">뉴스를 불러오지 못했습니다</div><div class="sub">Perplexity 키 또는 네트워크 상태를 확인하세요.</div></div>';
+      return;
+    }
+    listEl.innerHTML = items.map(item => {
+      const title = item.title || '제목 없음';
+      const meta = [item.source, item.date].filter(Boolean).join(' · ');
+      const link = item.link || '#';
+      const safeLink = /^https?:\/\//.test(link) ? link : '#';
+      return `<a class="news-item irow" href="${_escHtml(safeLink)}" target="_blank" rel="noopener noreferrer">
+        <div class="tit">${_escHtml(title)}</div>
+        <div class="sub">${_escHtml(meta || 'Mongolia pharma market')}</div>
+      </a>`;
+    }).join('');
+  } catch (_) {
+    listEl.innerHTML = '<div class="irow"><div class="tit">뉴스 조회 실패</div><div class="sub">잠시 후 다시 시도해 주세요.</div></div>';
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = '↺ 새로고침'; }
+  }
+}
+
+function _showP1Loading() { const el = document.getElementById('p1-loading-state'); if (el) el.style.display = 'flex'; }
+function _hideP1Loading() { const el = document.getElementById('p1-loading-state'); if (el) el.style.display = 'none'; }
+function _showCustomLoading() { const el = document.getElementById('custom-loading-state'); if (el) el.style.display = 'flex'; }
+function _hideCustomLoading() { const el = document.getElementById('custom-loading-state'); if (el) el.style.display = 'none'; }
+function _showP2Loading() { const el = document.getElementById('p2-loading-state'); if (el) el.style.display = 'flex'; }
+function _hideP2Loading() { const el = document.getElementById('p2-loading-state'); if (el) el.style.display = 'none'; }
+function _showP3Loading() { const el = document.getElementById('p3-loading-state'); if (el) el.style.display = 'flex'; }
+function _hideP3Loading() { const el = document.getElementById('p3-loading-state'); if (el) el.style.display = 'none'; }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    §2-b. 공정 섹션 토글
@@ -145,10 +225,10 @@ async function loadMacro() {
     _setMacro('macro-pharma', pharma ? String(pharma.value || '—') : '—', 'macro-pharma-src', pharma ? String(pharma.sub || '—') : '—');
     _setMacro('macro-growth', importDependency ? String(importDependency.value || '—') : '—', 'macro-growth-src', importDependency ? String(importDependency.sub || '—') : '—');
   } catch (_) {
-    _setMacro('macro-gdp',    'US$ 88,447',  'macro-gdp-src',    'IMF');
-    _setMacro('macro-pop',    '5,917,600명', 'macro-pop-src',    'Singstat');
-    _setMacro('macro-pharma', '$4.8B',       'macro-pharma-src', 'IQVIA');
-    _setMacro('macro-growth', '~85%',        'macro-growth-src', 'HSA');
+    _setMacro('macro-gdp',    'US$ 4,200',  'macro-gdp-src',    'IMF WEO 2024');
+    _setMacro('macro-pop',    '340만 명',   'macro-pop-src',    'UN WPP 2024');
+    _setMacro('macro-pharma', '$1.5억',     'macro-pharma-src', 'IQVIA / 몽골 보건부 추정');
+    _setMacro('macro-growth', '74.2%',      'macro-growth-src', '수입 의존도');
   }
 }
 
@@ -160,7 +240,7 @@ function _setMacro(valId, val, srcId, src) {
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   §3. 환율 로드 (N2) — GET /api/exchange
+   §3. 환율 로드 (N2) — GET /api/exchange/mnt
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 async function loadExchange() {
@@ -168,7 +248,7 @@ async function loadExchange() {
   if (btn) { btn.disabled = true; btn.textContent = '⏳ 조회 중…'; }
 
   try {
-    const res  = await fetch('/api/exchange');
+    const res  = await fetch('/api/exchange/mnt');
     const data = await res.json();
 
     // P2 환율 자동 채움용 전역 저장
@@ -178,31 +258,31 @@ async function loadExchange() {
       if (typeof _renderP2Manual === 'function') _renderP2Manual();
     }
 
-    // 메인 숫자 (KRW/SGD)
+    // 메인 숫자 (KRW/MNT)
     const rateEl = document.getElementById('exchange-main-rate');
     if (rateEl) {
-      const fmt = Number(data.sgd_krw).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const fmt = Number(data.mnt_krw).toLocaleString('ko-KR', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
       rateEl.innerHTML = `${fmt}<span style="font-size:14px;margin-left:4px;color:var(--muted);font-weight:700;">원</span>`;
     }
 
-    // 서브 그리드 (USD/KRW + SGD 연관 환율)
+    // 서브 그리드 (USD/KRW + MNT 연관 환율)
     const subEl = document.getElementById('exchange-sub');
     if (subEl) {
       const fmtUsd = data.usd_krw.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const fmtSgdUsd = Number(data.sgd_usd).toFixed(4);
-      const fmtUsdSgd = Number(data.usd_sgd).toFixed(4);
+      const fmtMntUsd = Number(data.mnt_usd).toFixed(7);
+      const fmtUsdMnt = Number(data.usd_mnt).toLocaleString('ko-KR', { maximumFractionDigits: 0 });
       subEl.innerHTML = `
         <div class="irow" style="margin:0">
           <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">USD / KRW</div>
           <div style="font-size:15px;font-weight:900;color:var(--navy);">${fmtUsd}원</div>
         </div>
         <div class="irow" style="margin:0">
-          <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">SGD / USD</div>
-          <div style="font-size:15px;font-weight:900;color:var(--navy);">${fmtSgdUsd}</div>
+          <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">MNT / USD</div>
+          <div style="font-size:15px;font-weight:900;color:var(--navy);">${fmtMntUsd}</div>
         </div>
         <div class="irow" style="margin:0">
-          <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">USD / SGD</div>
-          <div style="font-size:15px;font-weight:900;color:var(--navy);">${fmtUsdSgd}</div>
+          <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">USD / MNT</div>
+          <div style="font-size:15px;font-weight:900;color:var(--navy);">${fmtUsdMnt}</div>
         </div>
       `;
     }
@@ -228,7 +308,7 @@ async function loadExchange() {
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
 const TODO_FIXED_IDS = ['p1', 'rep', 'p2', 'p3'];
-const TODO_LS_KEY    = 'sg_upharma_todos_v1';
+const TODO_LS_KEY    = 'mn_upharma_todos_v1';
 let _lastTodoAddAt   = 0;
 
 /** localStorage에서 todo 상태 읽기 */
@@ -354,7 +434,7 @@ function _renderCustomTodos(state) {
    §5. 보고서 탭 관리 (N4)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
-const REPORTS_LS_KEY = 'sg_upharma_reports_v1';
+const REPORTS_LS_KEY = 'mn_upharma_reports_v1';
 
 function _loadReports() {
   try   { return JSON.parse(localStorage.getItem(REPORTS_LS_KEY) || '[]'); }
@@ -391,6 +471,7 @@ function _addReportEntry(result, pdfName) {
     inn:       result ? (INN_MAP[result.product_id] || result.inn || '') : '',
     verdict:   result ? (result.verdict || '—') : '—',
     price_hint: result ? String(result.price_positioning_pbs || '').trim() : '',
+    pbs_mnt_hint: result ? (result.ref_price_mnt ?? result.pbs_mnt_hint ?? null) : null,
     pbs_sgd_hint: result ? (result.pbs_dpmq_sgd_hint ?? null) : null,
     basis_trade: result ? String(result.basis_trade || '').trim() : '',
     risks_conditions: result ? String(result.risks_conditions || '').trim() : '',
@@ -505,14 +586,14 @@ let _p2ManualCalculated = false;
 function _makeP2Defaults() {
   return {
     public: [
-      { key: 'base_price', label: '기준 입찰가', value: 0, type: 'abs_input', unit: 'SGD', step: 0.1, min: 0, max: 99999999, enabled: true, fixed: false, expanded: false, hint: '경쟁사 입찰가 또는 목표 기준가 (SGD)', rationale: '공공 채널은 입찰 경쟁이 강해 기준가 설정이 핵심입니다.' },
-      { key: 'exchange', label: '환율 (USD→SGD)', value: 1.0, type: 'abs_input', unit: 'rate', step: 0.0001, min: 0, max: 99999, enabled: true, fixed: false, expanded: false, hint: 'USD→SGD 환율 보정값', rationale: '필요할 때만 환차 보정값으로 사용합니다.' },
+      { key: 'base_price', label: '기준 입찰가', value: 0, type: 'abs_input', unit: 'MNT', step: 100, min: 0, max: 99999999, enabled: true, fixed: false, expanded: false, hint: '경쟁사 입찰가 또는 목표 기준가 (MNT)', rationale: '공공 채널은 입찰 경쟁이 강해 기준가 설정이 핵심입니다.' },
+      { key: 'exchange', label: '환율 (USD→MNT)', value: 3450.0, type: 'abs_input', unit: 'rate', step: 1, min: 1, max: 99999, enabled: true, fixed: false, expanded: false, hint: 'USD→MNT 환율 (기본 3450)', rationale: '실시간 환율을 반영해 환차 리스크를 줄입니다.' },
       { key: 'pub_ratio', label: '공공 수출가 산출 비율', value: 30, type: 'pct_mult', unit: '%', step: 1, min: 0, max: 99999, enabled: true, fixed: false, expanded: false, hint: '기준가 대비 최종 반영 비율', rationale: '입찰·유통·파트너 마진을 반영한 목표 비율입니다.' },
     ],
     private: [
-      { key: 'base_het', label: '민간 기준가', value: 0, type: 'abs_input', unit: 'SGD', step: 0.1, min: 0, max: 99999999, enabled: true, fixed: false, expanded: false, hint: '소매/입고 기준 가격 (SGD)', rationale: '민간 시장은 소매 가격 구조 역산이 중요합니다.' },
-      { key: 'exchange', label: '환율 (USD→SGD)', value: 1.0, type: 'abs_input', unit: 'rate', step: 0.0001, min: 0, max: 99999, enabled: true, fixed: false, expanded: false, hint: 'USD→SGD 환율 보정값', rationale: '필요할 때만 환차 보정값으로 사용합니다.' },
-      { key: 'vat', label: 'GST 공제 (÷1.09)', value: 9, type: 'gst_fixed', unit: '%', step: 0, min: 9, max: 9, enabled: true, fixed: true, expanded: false, hint: '싱가포르 GST 9% 고정', rationale: '민간 소비자 가격에서 세금을 분리합니다.' },
+      { key: 'base_het', label: '민간 기준가', value: 0, type: 'abs_input', unit: 'MNT', step: 100, min: 0, max: 99999999, enabled: true, fixed: false, expanded: false, hint: '소매/입고 기준 가격 (MNT)', rationale: '민간 시장은 소매 가격 구조 역산이 중요합니다.' },
+      { key: 'exchange', label: '환율 (USD→MNT)', value: 3450.0, type: 'abs_input', unit: 'rate', step: 1, min: 1, max: 99999, enabled: true, fixed: false, expanded: false, hint: 'USD→MNT 환율 (기본 3450)', rationale: '실시간 환율 반영으로 가격 정합성을 유지합니다.' },
+      { key: 'vat', label: 'VAT 공제 (÷1.10)', value: 10, type: 'gst_fixed', unit: '%', step: 0, min: 10, max: 10, enabled: true, fixed: true, expanded: false, hint: '몽골 VAT 10% 고정', rationale: '민간 소비자 가격에서 세금을 분리합니다.' },
       { key: 'retail', label: '소매 마진율', value: 40, type: 'pct_deduct', unit: '%', step: 1, min: 0, max: 99999, enabled: true, fixed: false, expanded: false, hint: '체인/약국 마진 차감', rationale: '채널별 마진 차이를 반영합니다.' },
       { key: 'partner', label: '파트너사 마진', value: 20, type: 'pct_deduct', unit: '%', step: 1, min: 0, max: 99999, enabled: true, fixed: false, expanded: false, hint: '현지 파트너 수수료', rationale: '현지 영업·등록 비용을 포함합니다.' },
       { key: 'distribution', label: '유통 마진', value: 15, type: 'pct_deduct', unit: '%', step: 1, min: 0, max: 99999, enabled: true, fixed: false, expanded: false, hint: '물류/도매 비용', rationale: '유통 구조별 고정비를 반영합니다.' },
@@ -563,7 +644,7 @@ function setP2AiSeg(seg) {
   const desc = document.getElementById('p2-ai-seg-desc');
   if (desc) {
     desc.textContent = _p2AiSeg === 'public'
-      ? '공공 시장: ALPS 조달청 채널 · 27개 공공기관 통합구매 기준'
+      ? '공공 시장: HIF/EMD·공공조달 채널 기준'
       : '민간 시장: 병원·약국·체인 채널 중심 유통 구조 기준';
   }
 }
@@ -697,6 +778,7 @@ async function runP2AiPipeline() {
 
   if (runBtn) runBtn.disabled = true;
   if (runIcon) runIcon.textContent = '⏳';
+  _showP2Loading();
 
   try {
     const res = await fetch('/api/p2/pipeline', {
@@ -712,6 +794,7 @@ async function runP2AiPipeline() {
     _showP2AiError(`실행 실패: ${err.message}`);
     if (runBtn) runBtn.disabled = false;
     if (runIcon) runIcon.textContent = '▶';
+    _hideP2Loading();
   }
 }
 
@@ -741,6 +824,7 @@ async function _pollP2AiPipeline() {
       document.getElementById('btn-p2-ai-run')?.removeAttribute('disabled');
       const runIcon = document.getElementById('p2-ai-run-icon');
       if (runIcon) runIcon.textContent = '▶';
+      _hideP2Loading();
     } else if (data.status === 'error') {
       clearInterval(_p2AiPollTimer);
       _p2AiPollTimer = null;
@@ -750,6 +834,7 @@ async function _pollP2AiPipeline() {
       document.getElementById('btn-p2-ai-run')?.removeAttribute('disabled');
       const runIcon = document.getElementById('p2-ai-run-icon');
       if (runIcon) runIcon.textContent = '▶';
+      _hideP2Loading();
     }
   } catch (_err) {
     // polling retry
@@ -779,6 +864,11 @@ function recalcP2Col(col) {
     if (opt.type === 'pct_add')   price *= (1 + opt.value / 100);
     else if (opt.type === 'pct_deduct') price *= (1 - opt.value / 100);
     else if (opt.type === 'abs_add')    price += opt.value;
+    else if (opt.type === 'abs_deduct') price -= opt.value;
+    else if (opt.type === 'multiply')   price *= opt.value;
+    else if (opt.type === 'divide' && opt.value !== 0) price /= opt.value;
+    else if (opt.type === 'usd_add' && _p2ScenarioRaw.local_usd > 0) price += opt.value / _p2ScenarioRaw.local_usd;
+    else if (opt.type === 'usd_deduct' && _p2ScenarioRaw.local_usd > 0) price -= opt.value / _p2ScenarioRaw.local_usd;
   }
   price = Math.max(0, price);
 
@@ -797,7 +887,16 @@ function renderP2ColOptions(col, showAddForm) {
   if (!container) return;
   const opts = (_p2ColData[col] || { opts: [] }).opts;
 
-  const typeLabel = { pct_add: '% 가산', pct_deduct: '% 차감', abs_add: 'SGD 가산' };
+  const typeLabel = {
+    pct_add: '% 가산',
+    pct_deduct: '% 차감',
+    abs_add: 'MNT 가산',
+    abs_deduct: 'MNT 차감',
+    multiply: '× 배수',
+    divide: '÷ 나누기',
+    usd_add: 'USD 가산',
+    usd_deduct: 'USD 차감',
+  };
 
   let html = opts.map(opt => `
     <div class="p2c-opt-row">
@@ -815,7 +914,8 @@ function renderP2ColOptions(col, showAddForm) {
         <select class="p2c-opt-type-select" id="p2c-newtype-${col}">
           <option value="pct_deduct">% 차감</option>
           <option value="pct_add">% 가산</option>
-          <option value="abs_add">SGD 가산</option>
+          <option value="abs_add">MNT 가산</option>
+          <option value="abs_deduct">MNT 차감</option>
         </select>
         <input class="p2c-opt-val" type="number" placeholder="값" id="p2c-newval-${col}" step="0.1" min="0">
         <button class="p2c-confirm-btn" onclick="confirmP2ColOption('${col}')">✓</button>
@@ -857,6 +957,113 @@ function updateP2ColOption(col, optId, newVal) {
   if (opt) { opt.value = parseFloat(newVal) || 0; recalcP2Col(col); }
 }
 
+let _p2ActiveEditCol = null;
+
+function openP2EditModal(col) {
+  _p2ActiveEditCol = col;
+  const overlay = document.getElementById('p2-edit-overlay');
+  const title = document.getElementById('p2em-title');
+  const baseInput = document.getElementById('p2em-base');
+  const colBase = document.getElementById('p2ci-base-' + col);
+  const colPrice = document.getElementById('p2c-price-' + col);
+  const colSub = document.getElementById('p2c-sub-' + col);
+  const names = { agg: '저가 진입', avg: '기준가', cons: '프리미엄' };
+  if (title) title.textContent = `역산 · 옵션 편집 (${names[col] || col})`;
+  if (baseInput) baseInput.value = String(colBase?.value || '').replace(/,/g, '') || _p2ScenarioRaw[col] || 0;
+  _setText('p2em-ref-mnt', colPrice ? colPrice.textContent : '—');
+  const usdMatch = String(colSub?.textContent || '').match(/([0-9,.]+)\s*USD/i);
+  _setText('p2em-ref-usd', usdMatch ? usdMatch[1] : '—');
+  _renderP2ModalOptions();
+  recalcP2ColModal();
+  if (overlay) overlay.style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeP2EditModal(event) {
+  const modal = document.getElementById('p2-edit-modal');
+  if (event && modal && modal.contains(event.target)) return;
+  const overlay = document.getElementById('p2-edit-overlay');
+  if (overlay) overlay.style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function _renderP2ModalOptions() {
+  const col = _p2ActiveEditCol;
+  const wrap = document.getElementById('p2em-opts');
+  if (!wrap || !col) return;
+  const opts = (_p2ColData[col] || { opts: [] }).opts;
+  const labels = {
+    pct_add: '% 가산',
+    pct_deduct: '% 차감',
+    abs_add: 'MNT 가산',
+    abs_deduct: 'MNT 차감',
+    multiply: '× 배수',
+    divide: '÷ 나누기',
+    usd_add: 'USD 가산',
+    usd_deduct: 'USD 차감',
+  };
+  wrap.innerHTML = opts.length
+    ? opts.map((opt) => `
+      <div class="p2c-opt-row">
+        <span class="p2c-opt-name">${_escHtml(opt.name)}</span>
+        <span class="p2c-opt-type-label">${_escHtml(labels[opt.type] || opt.type)}</span>
+        <input class="p2c-opt-val" type="number" value="${opt.value}" step="0.1" min="0"
+          oninput="updateP2ModalOption('${_escHtml(opt.id)}', this.value)">
+        <button class="p2c-opt-del" onclick="deleteP2ModalOption('${_escHtml(opt.id)}')">×</button>
+      </div>`).join('')
+    : '<div style="font-size:12px;color:var(--muted);padding:6px 0;">추가 옵션 없음</div>';
+}
+
+function recalcP2ColModal() {
+  const col = _p2ActiveEditCol;
+  if (!col) return;
+  const baseInput = document.getElementById('p2em-base');
+  const colBase = document.getElementById('p2ci-base-' + col);
+  if (baseInput && colBase) colBase.value = baseInput.value || 0;
+  recalcP2Col(col);
+  const result = document.getElementById('p2em-result');
+  const colPrice = document.getElementById('p2c-price-' + col);
+  const colSub = document.getElementById('p2c-sub-' + col);
+  if (result) result.textContent = `${colPrice?.textContent || '—'} MNT · ${colSub?.textContent || ''}`;
+}
+
+function confirmP2ModalOption() {
+  const col = _p2ActiveEditCol;
+  if (!col) return;
+  const name = (document.getElementById('p2em-newname')?.value || '').trim();
+  const type = document.getElementById('p2em-newtype')?.value || 'pct_deduct';
+  const val = parseFloat(document.getElementById('p2em-newval')?.value || '0');
+  if (!name || Number.isNaN(val) || val < 0) return;
+  _p2ColData[col] = _p2ColData[col] || { opts: [] };
+  _p2ColData[col].opts.push({ id: 'm' + Date.now(), name, type, value: val });
+  const nameEl = document.getElementById('p2em-newname');
+  const valEl = document.getElementById('p2em-newval');
+  if (nameEl) nameEl.value = '';
+  if (valEl) valEl.value = '';
+  _renderP2ModalOptions();
+  renderP2ColOptions(col, false);
+  recalcP2ColModal();
+}
+
+function updateP2ModalOption(optId, newVal) {
+  const col = _p2ActiveEditCol;
+  if (!col || !_p2ColData[col]) return;
+  const opt = _p2ColData[col].opts.find((o) => o.id === optId);
+  if (!opt) return;
+  opt.value = parseFloat(newVal) || 0;
+  renderP2ColOptions(col, false);
+  recalcP2ColModal();
+}
+
+function deleteP2ModalOption(optId) {
+  const col = _p2ActiveEditCol;
+  if (!col || !_p2ColData[col]) return;
+  _p2ColData[col].opts = _p2ColData[col].opts.filter((o) => o.id !== optId);
+  _renderP2ModalOptions();
+  renderP2ColOptions(col, false);
+  recalcP2ColModal();
+}
+
 function _renderP2AiResult(data) {
   const extracted = data?.extracted || {};
   const analysis = data?.analysis || {};
@@ -879,18 +1086,18 @@ function _renderP2AiResult(data) {
 
   // 참조 정보
   _setText('p2r-ref-price-text',
-    extracted.ref_price_text || (extracted.ref_price_sgd != null ? `SGD ${Number(extracted.ref_price_sgd).toFixed(2)}` : '추출값 없음'));
-  const krwRate = rates.sgd_krw;
-  const usdRate = rates.sgd_usd;
+    extracted.ref_price_text || (extracted.ref_price_mnt != null ? `MNT ${Number(extracted.ref_price_mnt).toLocaleString('ko-KR')}` : '추출값 없음'));
+  const krwRate = rates.mnt_krw;
+  const usdRate = rates.mnt_usd;
   let rateText = '환율 정보 없음';
   if (krwRate) {
-    rateText = `1 SGD = ${Number(krwRate).toFixed(2)} KRW`;
-    if (usdRate) rateText += ` / ${Number(usdRate).toFixed(4)} USD`;
+    rateText = `1 MNT = ${Number(krwRate).toFixed(4)} KRW`;
+    if (usdRate) rateText += ` / ${Number(usdRate).toFixed(6)} USD`;
   }
   _setText('p2r-exchange', rateText);
 
   // 최종 권고가
-  _setText('p2r-final-price', `SGD ${Number(analysis.final_price_sgd || analysis.final_price_mnt || 0).toFixed(2)}`);
+  _setText('p2r-final-price', `MNT ${Number(analysis.final_price_mnt || analysis.final_price_sgd || 0).toLocaleString('ko-KR')}`);
 
   // 시나리오
   const scenEl = document.getElementById('p2r-scenarios');
@@ -902,7 +1109,7 @@ function _renderP2AiResult(data) {
           <div class="p2-scenario p2-scenario--${cls}">
             <div class="p2-scenario-top">
               <span class="p2-scenario-name">${_escHtml(String(s.name || `시나리오 ${idx + 1}`))}</span>
-              <span class="p2-scenario-price">SGD ${Number(s.price_sgd || s.price_mnt || 0).toFixed(2)}</span>
+              <span class="p2-scenario-price">MNT ${Number(s.price_mnt || s.price_sgd || 0).toLocaleString('ko-KR')}</span>
             </div>
           </div>`;
       }).join('');
@@ -928,22 +1135,22 @@ function _renderP2AiResult(data) {
   }
 
   // ── 3열 시나리오 UI 채우기 ──────────────────────────────
-  const sgdUsd = rates.sgd_usd ? Number(rates.sgd_usd) : 0;
-  const sgdKrw = rates.sgd_krw ? Number(rates.sgd_krw) : 0;
+  const mntUsd = rates.mnt_usd ? Number(rates.mnt_usd) : 0;
+  const mntKrw = rates.mnt_krw ? Number(rates.mnt_krw) : 0;
 
   const cols = ['agg', 'avg', 'cons'];
   scenarios.forEach((s, i) => {
     const col     = cols[i];
     if (!col) return;
-    const priceSgd = Number(s.price_sgd || s.price_mnt || 0);
-    _p2ScenarioRaw[col]      = priceSgd;
-    _p2ScenarioRaw.local_usd = sgdUsd;
-    _p2ScenarioRaw.local_krw = sgdKrw;
+    const priceMnt = Number(s.price_mnt || s.price_sgd || 0);
+    _p2ScenarioRaw[col]      = priceMnt;
+    _p2ScenarioRaw.local_usd = mntUsd;
+    _p2ScenarioRaw.local_krw = mntKrw;
 
-    const refBase = extracted.ref_price_sgd != null ? Number(extracted.ref_price_sgd) : 0;
+    const refBase = extracted.ref_price_mnt != null ? Number(extracted.ref_price_mnt) : 0;
     const refLabel = refBase > 0
-      ? `Retail base: SGD ${(refBase * (i === 0 ? 1.3 : i === 1 ? 1.0 : 0.7)).toFixed(2)}`
-      : 'Retail base: — SGD';
+      ? `Retail base: MNT ${Math.round(refBase * (i === 0 ? 1.3 : i === 1 ? 1.0 : 0.7)).toLocaleString('ko-KR')}`
+      : 'Retail base: — MNT';
 
     const priceEl = document.getElementById('p2c-price-' + col);
     const subEl   = document.getElementById('p2c-sub-' + col);
@@ -951,11 +1158,11 @@ function _renderP2AiResult(data) {
     const baseInput = document.getElementById('p2ci-base-' + col);
 
     if (refEl)     refEl.textContent   = refLabel;
-    if (priceEl)   priceEl.textContent = priceSgd.toFixed(2);
-    if (baseInput) baseInput.value     = priceSgd.toFixed(2);
+    if (priceEl)   priceEl.textContent = Math.round(priceMnt).toLocaleString('ko-KR');
+    if (baseInput) baseInput.value     = Math.round(priceMnt);
     if (subEl) {
-      const usd = sgdUsd > 0 ? (priceSgd * sgdUsd).toFixed(2) : '—';
-      const krw = sgdKrw > 0 ? Math.round(priceSgd * sgdKrw).toLocaleString('ko-KR') : '—';
+      const usd = mntUsd > 0 ? (priceMnt * mntUsd).toFixed(2) : '—';
+      const krw = mntKrw > 0 ? Math.round(priceMnt * mntKrw).toLocaleString('ko-KR') : '—';
       subEl.textContent = `${usd} USD · ${krw} KRW`;
     }
     // Reset custom options for each column on new AI result
@@ -965,10 +1172,10 @@ function _renderP2AiResult(data) {
 
   // 경쟁가 분포
   if (scenarios.length >= 3) {
-    const prices = scenarios.map(s => Number(s.price_sgd || s.price_mnt || 0)).sort((a, b) => a - b);
-    _setText('p2-dist-p25', `SGD ${prices[0].toFixed(2)}`);
-    _setText('p2-dist-med', `SGD ${prices[1].toFixed(2)}`);
-    _setText('p2-dist-p75', `SGD ${prices[2].toFixed(2)}`);
+    const prices = scenarios.map(s => Number(s.price_mnt || s.price_sgd || 0)).sort((a, b) => a - b);
+    _setText('p2-dist-p25', `MNT ${Math.round(prices[0]).toLocaleString('ko-KR')}`);
+    _setText('p2-dist-med', `MNT ${Math.round(prices[1]).toLocaleString('ko-KR')}`);
+    _setText('p2-dist-p75', `MNT ${Math.round(prices[2]).toLocaleString('ko-KR')}`);
   }
 
   // 제품 목록 (추출된 product_name 기준)
@@ -991,22 +1198,22 @@ function _renderP2AiResult(data) {
 function _p2FillExchangeRate() {
   const rates = window._exchangeRates;
   if (!rates) return;
-  const usdSgd = Number(rates.usd_sgd);
-  if (!usdSgd || usdSgd <= 0) return;
+  const usdMnt = Number(rates.usd_mnt);
+  if (!usdMnt || usdMnt <= 0) return;
   ['public', 'private'].forEach((seg) => {
     const opt = _p2Manual[seg].find((x) => x.key === 'exchange');
-    if (opt) opt.value = usdSgd;
+    if (opt) opt.value = usdMnt;
   });
 }
 
 function _p2FillBaseFromReport() {
   const report = _getP2SelectedReport();
   if (!report) return;
-  // 1순위: 저장된 숫자형 SGD 값
-  const numHint = report.pbs_sgd_hint || report.pbs_mnt_hint;
+  // 1순위: 저장된 숫자형 MNT 값
+  const numHint = report.pbs_mnt_hint || report.pbs_sgd_hint;
   const hint = (numHint != null && !Number.isNaN(Number(numHint)) && Number(numHint) > 0)
     ? Number(numHint)
-    : _extractSgdHint(report.price_hint || '');
+    : _extractMntHint(report.price_hint || '');
   if (!Number.isNaN(hint) && hint > 0) {
     const pub = _p2Manual.public.find((x) => x.key === 'base_price');
     const pri = _p2Manual.private.find((x) => x.key === 'base_het');
@@ -1061,14 +1268,16 @@ function _getP2SelectedReport() {
   return _loadReports().find((r) => String(r.id) === String(_p2SelectedReportId)) || null;
 }
 
-function _extractSgdHint(text) {
+function _extractMntHint(text) {
   const src = String(text || '');
-  const mRange = src.match(/SGD\s*([0-9,]+(?:\.[0-9]+)?)\s*[~\-–]\s*([0-9,]+(?:\.[0-9]+)?)/i);
+  const mRange = src.match(/MNT\s*([0-9,]+(?:\.[0-9]+)?)\s*[~\-–]\s*([0-9,]+(?:\.[0-9]+)?)/i);
   if (mRange) return (Number(mRange[1].replace(/,/g,'')) + Number(mRange[2].replace(/,/g,''))) / 2;
-  const mSingle = src.match(/(?:SGD|S\$)\s*([0-9,]+(?:\.[0-9]+)?)/i);
+  const mSingle = src.match(/MNT\s*([0-9,]+(?:\.[0-9]+)?)/i);
   if (mSingle) return Number(mSingle[1].replace(/,/g,''));
-  const mUsd = src.match(/(?:US\$|USD\s+)([0-9]+(?:\.[0-9]+)?)/i);
-  if (mUsd) return Number(mUsd[1]) * 1.35;
+  const mTog = src.match(/([0-9,]+(?:\.[0-9]+)?)\s*(?:₮|төгрөг)/i);
+  if (mTog) return Number(mTog[1].replace(/,/g,''));
+  const mUsd = src.match(/(?:US\$|\$|USD\s+)([0-9]+(?:\.[0-9]+)?)/i);
+  if (mUsd) return Number(mUsd[1]) * 3450;
   return NaN;
 }
 
@@ -1080,17 +1289,17 @@ function _calcP2Manual() {
     const ex = Number(options.find((x) => x.key === 'exchange')?.value || 1);
     const ratio = Number(options.find((x) => x.key === 'pub_ratio')?.value || 30);
     let price = base * ex * (ratio / 100);
-    const parts = [`SGD ${base.toFixed(2)}`, `× ${ex.toFixed(4)}`, `× ${ratio}%`];
+    const parts = [`MNT ${base.toLocaleString('ko-KR')}`, `× ${ex.toFixed(2)}`, `× ${ratio}%`];
     options.forEach((opt) => {
       if (opt.type === 'pct_add_custom') {
         price *= (1 + Number(opt.value) / 100);
         parts.push(`× (1+${Number(opt.value).toFixed(1)}%)`);
       } else if (opt.type === 'abs_add_custom') {
         price += Number(opt.value);
-        parts.push(`+ SGD ${Number(opt.value).toFixed(2)}`);
+        parts.push(`+ MNT ${Number(opt.value).toLocaleString('ko-KR')}`);
       }
     });
-    return { kup: Math.max(price, 0), formulaStr: `${parts.join('  ')}  =  KUP  SGD ${Math.max(price, 0).toFixed(2)}` };
+    return { kup: Math.max(price, 0), formulaStr: `${parts.join('  ')}  =  KUP  MNT ${Math.round(Math.max(price, 0)).toLocaleString('ko-KR')}` };
   }
 
   let price = 0;
@@ -1098,13 +1307,13 @@ function _calcP2Manual() {
   options.forEach((opt) => {
     if (opt.key === 'base_het') {
       price = Number(opt.value);
-      parts.push(`SGD ${price.toFixed(2)}`);
+      parts.push(`MNT ${Math.round(price).toLocaleString('ko-KR')}`);
     } else if (opt.key === 'exchange' && Number(opt.value) !== 1) {
       price *= Number(opt.value);
       parts.push(`× ${Number(opt.value).toFixed(2)}`);
     } else if (opt.type === 'gst_fixed') {
-      price /= 1.09;
-      parts.push('÷ 1.09');
+      price /= 1.10;
+      parts.push('÷ 1.10');
     } else if (opt.type === 'pct_deduct') {
       price *= (1 - Number(opt.value) / 100);
       parts.push(`× (1−${Number(opt.value).toFixed(1)}%)`);
@@ -1113,10 +1322,10 @@ function _calcP2Manual() {
       parts.push(`× (1+${Number(opt.value).toFixed(1)}%)`);
     } else if (opt.type === 'abs_add_custom') {
       price += Number(opt.value);
-      parts.push(`+ SGD ${Number(opt.value).toFixed(2)}`);
+      parts.push(`+ MNT ${Number(opt.value).toLocaleString('ko-KR')}`);
     }
   });
-  return { kup: Math.max(price, 0), formulaStr: `${(parts.join('  ') || 'SGD 0')}  =  KUP  SGD ${Math.max(price, 0).toFixed(2)}` };
+  return { kup: Math.max(price, 0), formulaStr: `${(parts.join('  ') || 'MNT 0')}  =  KUP  MNT ${Math.round(Math.max(price, 0)).toLocaleString('ko-KR')}` };
 }
 
 function _renderP2Manual() {
@@ -1149,9 +1358,9 @@ function _renderP2Manual() {
   const aggReason  = _p2ManualScenarioReason('aggressive',   _p2ManualSeg);
   const avgReason  = _p2ManualScenarioReason('average',      _p2ManualSeg);
   const consReason = _p2ManualScenarioReason('conservative', _p2ManualSeg);
-  const aggFormula  = `KUP SGD ${calc.kup.toFixed(2)} × 0.90 = SGD ${agg.toFixed(2)}`;
-  const avgFormula  = `KUP SGD ${avg.toFixed(2)} (기준가 그대로)`;
-  const consFormula = `KUP SGD ${calc.kup.toFixed(2)} × 1.10 = SGD ${cons.toFixed(2)}`;
+  const aggFormula  = `KUP MNT ${Math.round(calc.kup).toLocaleString('ko-KR')} × 0.90 = MNT ${Math.round(agg).toLocaleString('ko-KR')}`;
+  const avgFormula  = `KUP MNT ${Math.round(avg).toLocaleString('ko-KR')} (기준가 그대로)`;
+  const consFormula = `KUP MNT ${Math.round(calc.kup).toLocaleString('ko-KR')} × 1.10 = MNT ${Math.round(cons).toLocaleString('ko-KR')}`;
   _p2LastScenarios = { mode: 'manual', seg: _p2ManualSeg, base: calc.kup, agg, avg, cons, formulaStr: calc.formulaStr, aggReason, avgReason, consReason, aggFormula, avgFormula, consFormula, rationaleLines: [] };
 }
 
@@ -1163,7 +1372,7 @@ function _p2OptionCardHtml(opt) {
                  : opt.unit === '%'    ? Number(opt.value).toFixed(0)
                  :                       Number(opt.value).toFixed(2);
   // 단위 표시
-  const unitLabel = opt.unit === '%' ? '%' : opt.unit === 'rate' ? '' : 'SGD';
+  const unitLabel = opt.unit === '%' ? '%' : opt.unit === 'rate' ? '' : 'MNT';
 
   return `
     <div class="p2-step-card">
@@ -1222,7 +1431,7 @@ function _renderP2CustomAddSection() {
       <select class="p2-custom-type-select" id="p2c-type">
         <option value="pct_deduct">% 차감</option>
         <option value="pct_add_custom">% 가산</option>
-        <option value="abs_add_custom">SGD 가산</option>
+        <option value="abs_add_custom">MNT 가산</option>
       </select>
       <input class="p2-custom-input" id="p2c-val" type="number" placeholder="값" step="100" min="0" max="9999999" style="width:80px;flex:0 0 80px">
       <button class="p2-add-custom-btn" id="p2c-add" type="button">+ 추가</button>
@@ -1237,7 +1446,7 @@ function _renderP2CustomAddSection() {
       label,
       value: val,
       type,
-      unit: type === 'abs_add_custom' ? 'SGD' : '%',
+      unit: type === 'abs_add_custom' ? 'MNT' : '%',
       step: type === 'abs_add_custom' ? 100 : 1,
       min: 0,
       max: type === 'abs_add_custom' ? 9999999 : 100,
@@ -1405,6 +1614,7 @@ async function runPipeline() {
   document.getElementById('report-card').classList.remove('visible');
   document.getElementById('btn-analyze').disabled = true;
   document.getElementById('btn-icon').textContent  = '⏳';
+  _showP1Loading();
 
   const reBtn = document.getElementById('btn-reanalyze');
   if (reBtn) reBtn.style.display = 'none';
@@ -1432,6 +1642,7 @@ async function runPipeline() {
 function _resetBtn() {
   document.getElementById('btn-analyze').disabled = false;
   document.getElementById('btn-icon').textContent  = '▶';
+  _hideP1Loading();
 }
 
 /**
@@ -1516,6 +1727,7 @@ function _resetCustomProgress() {
 function _resetCustomBtn() {
   document.getElementById('btn-custom').disabled = false;
   document.getElementById('custom-icon').textContent = '▶';
+  _hideCustomLoading();
 }
 
 async function runCustomPipeline() {
@@ -1530,6 +1742,7 @@ async function runCustomPipeline() {
   document.getElementById('report-card').classList.remove('visible');
   document.getElementById('btn-custom').disabled = true;
   document.getElementById('custom-icon').textContent = '⏳';
+  _showCustomLoading();
 
   if (_customPollTimer) clearInterval(_customPollTimer);
   _setCustomProgress('analyze', 'running');
@@ -1799,10 +2012,10 @@ function _formatDetailed(text) {
 }
 
 function _pbsLineFromApi(result) {
-  const sgd = result.ref_price_sgd ?? result.pbs_dpmq_sgd_hint;
-  const sgdNum = sgd != null && sgd !== '' ? Number(sgd) : NaN;
-  if (!Number.isNaN(sgdNum) && sgdNum > 0) {
-    return `참고가 SGD ${sgdNum.toFixed(2)}`;
+  const mnt = result.ref_price_mnt ?? result.pbs_mnt_hint;
+  const mntNum = mnt != null && mnt !== '' ? Number(mnt) : NaN;
+  if (!Number.isNaN(mntNum) && mntNum > 0) {
+    return `참고가 MNT ${Math.round(mntNum).toLocaleString('ko-KR')}`;
   }
   const haiku = String(result.pbs_haiku_estimate || '').trim();
   if (haiku) return haiku;
@@ -1883,14 +2096,14 @@ let _p3PdfName   = null;
 
 // P1 product_key → 표시 레이블 (P3 연동용)
 const P3_PRODUCT_LABELS = {
-  SG_ciloduo_cilosta_rosuva: 'Ciloduo · Cilostazol + Rosuvastatin',
-  SG_rosumeg_combigel: 'Rosumeg Combigel · Rosuvastatin + Omega-3',
-  SG_atmeg_combigel: 'Atmeg Combigel · Atorvastatin + Omega-3',
-  SG_gastiin_cr_mosapride: 'Gastiin CR · Mosapride Citrate 15mg',
-  SG_omethyl_omega3_2g: 'Omethyl Cutielet · Omega-3 EE 2g',
-  SG_hydrine_hydroxyurea_500: 'Hydrine · Hydroxyurea 500mg',
-  SG_sereterol_activair: 'Sereterol Activair · Fluticasone + Salmeterol',
-  SG_gadvoa_gadobutrol_604: 'Gadvoa Inj. · Gadobutrol',
+  MN_ciloduo_cilosta_rosuva: 'Ciloduo · Cilostazol + Rosuvastatin',
+  MN_rosumeg_combigel: 'Rosumeg Combigel · Rosuvastatin + Omega-3',
+  MN_atmeg_combigel: 'Atmeg Combigel · Atorvastatin + Omega-3',
+  MN_gastiin_cr_mosapride: 'Gastiin CR · Mosapride Citrate 15mg',
+  MN_omethyl_omega3_2g: 'Omethyl Cutielet · Omega-3 EE 2g',
+  MN_hydrine_hydroxyurea_500: 'Hydrine · Hydroxyurea 500mg',
+  MN_sereterol_activair: 'Sereterol Activair · Fluticasone + Salmeterol',
+  MN_gadvoa_gadobutrol_604: 'Gadvoa Inj. · Gadobutrol',
 };
 
 /** P1 품목 선택 변경 시 P3 연동 레이블 갱신 */
@@ -1927,7 +2140,7 @@ async function runP3Pipeline() {
   const errEl   = document.getElementById('p3-error-msg');
   const fromReport = _getSelectedReportFromSelect('p3-report-select');
   const productFromReport = normalizeProductKey(fromReport && fromReport.product_id ? String(fromReport.product_id) : '');
-  const product = productFromReport || normalizeProductKey(document.getElementById('product-select')?.value) || 'SG_sereterol_activair';
+  const product = productFromReport || normalizeProductKey(document.getElementById('product-select')?.value) || 'MN_sereterol_activair';
   const skelEl  = document.getElementById('p3-skel');
   const resultSection = document.getElementById('p3-result-section');
 
@@ -1936,6 +2149,7 @@ async function runP3Pipeline() {
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
   if (resultSection) resultSection.style.display = 'none';
   if (skelEl) skelEl.style.display = '';
+  _showP3Loading();
   _resetP3Progress();
   _setP3Progress('crawl', 'running');
 
@@ -1961,6 +2175,7 @@ async function runP3Pipeline() {
     if (btn) btn.disabled = false;
     if (icon) icon.textContent = '▶';
     if (skelEl) skelEl.style.display = 'none';
+    _hideP3Loading();
     _resetP3Progress();
   }
 }
@@ -1991,6 +2206,7 @@ async function _pollP3() {
       document.getElementById('p3-result-section').style.display = '';
       const skelEl = document.getElementById('p3-skel');
       if (skelEl) skelEl.style.display = 'none';
+      _hideP3Loading();
       const dlBtn = document.getElementById('p3-dl-btn');
       if (dlBtn && _p3PdfName) dlBtn.disabled = false;
 
@@ -2004,6 +2220,7 @@ async function _pollP3() {
       _p3PollTimer = null;
       const skelEl = document.getElementById('p3-skel');
       if (skelEl) skelEl.style.display = 'none';
+      _hideP3Loading();
       const errEl = document.getElementById('p3-error-msg');
       if (errEl) { errEl.style.display = ''; errEl.textContent = `오류: ${data.step_label || '파이프라인 실패'}`; }
       if (data.step && P3_STEP_MAP[data.step]) _setP3Progress(P3_STEP_MAP[data.step], 'error');
@@ -2048,7 +2265,7 @@ function _renderP3Cards(buyers) {
 
   wrap.innerHTML = buyers.map((b, i) => {
     const pri       = b.priority === 1 ? 1 : 2;
-    const priLabel  = pri === 1 ? '성분 일치' : 'Singapore';
+    const priLabel  = pri === 1 ? '성분 일치' : 'Mongolia';
     const priClass  = pri === 1 ? 'p3-tag-p1' : 'p3-tag-p2';
     const matched   = (b.matched_ingredients || []).join(' · ') || '';
     const score     = b.composite_score ?? 0;
@@ -2098,7 +2315,7 @@ function showBuyerDetail(idx) {
   if (!b) return;
   const e = b.enriched || {};
   const rankEmoji = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
-  const priLabel = b.priority === 1 ? '성분 일치' : 'Singapore';
+  const priLabel = b.priority === 1 ? '성분 일치' : 'Mongolia';
   const priClass = b.priority === 1 ? 'p3-tag-p1' : 'p3-tag-p2';
 
   function row(label, val) {
@@ -2254,21 +2471,21 @@ async function loadAhpPartners() {
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   §13. Leaflet 지도 초기화 (싱가포르)
+   §13. Leaflet 지도 초기화 (몽골)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
-(function initSgMap() {
-  const el = document.getElementById('sg-map');
+(function initMnMap() {
+  const el = document.getElementById('mn-map');
   if (!el || typeof L === 'undefined') return;
-  const map = L.map('sg-map', { zoomControl: true, scrollWheelZoom: true });
+  const map = L.map('mn-map', { zoomControl: true, scrollWheelZoom: true });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap',
-    maxZoom: 14,
+    maxZoom: 10,
   }).addTo(map);
-  map.setView([1.3521, 103.8198], 11);
-  L.marker([1.3521, 103.8198])
+  map.setView([47.8864, 106.9057], 5);
+  L.marker([47.8864, 106.9057])
     .addTo(map)
-    .bindPopup('<b>Singapore</b><br>싱가포르')
+    .bindPopup('<b>Ulaanbaatar</b><br>몽골 수도')
     .openPopup();
   setTimeout(() => { map.invalidateSize(); }, 120);
 })();

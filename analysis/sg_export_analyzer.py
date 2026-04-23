@@ -1,4 +1,4 @@
-"""싱가포르 1공정 수출 적합성 분석 엔진.
+"""몽골 1공정 수출 적합성 분석 엔진.
 
 LLM 우선순위 (가이드라인 §1):
   1. Claude API (기본: claude-haiku-4-5-20251001) — 1차 분석·판단·근거 생성 (Primary)
@@ -105,7 +105,7 @@ _FALLBACK_PRODUCT_META: list[dict[str, str]] = [
         "key_risk": "보충제/의약품 분류 및 수입 규정 확인 필요",
     },
     {
-        "product_id": "MN_hydrine_hydroxyurea",
+        "product_id": "MN_hydrine_hydroxyurea_500",
         "trade_name": "Hydrine",
         "inn": "Hydroxyurea 500mg",
         "dosage_form": "Cap/Tab",
@@ -129,7 +129,7 @@ _FALLBACK_PRODUCT_META: list[dict[str, str]] = [
         "key_risk": "흡입제 제형 경쟁·등재 요건 및 특허/브랜드 경쟁 확인 필요",
     },
     {
-        "product_id": "MN_gadvoa_gadobutrol",
+        "product_id": "MN_gadvoa_gadobutrol_604",
         "trade_name": "Gadvoa Inj.",
         "inn": "Gadobutrol",
         "dosage_form": "Injection",
@@ -291,6 +291,8 @@ def _merge_with_fallback_meta(rows: list[dict[str, Any]]) -> list[dict[str, Any]
 
     for fallback in _FALLBACK_PRODUCT_META:
         pid = fallback["product_id"]
+        if not pid.startswith("MN_"):
+            continue
         if pid in by_pid:
             current = by_pid[pid]
             for key, value in fallback.items():
@@ -322,7 +324,7 @@ def _merge_with_fallback_meta(rows: list[dict[str, Any]]) -> list[dict[str, Any]
 
 
 def _load_product_meta() -> list[dict[str, Any]]:
-    """Supabase products 테이블 (SG:kup_pipeline)에서 8품목 메타 로드.
+    """Supabase products 테이블 (MN:kup_pipeline)에서 8품목 메타 로드.
 
     Supabase 미연결 또는 데이터 없을 시 빈 리스트 반환.
     """
@@ -334,8 +336,8 @@ def _load_product_meta() -> list[dict[str, Any]]:
             .select("product_id,trade_name,active_ingredient,inn_name,strength,"
                     "dosage_form,market_segment,registration_number,"
                     "manufacturer,country_specific")
-            .eq("country", "SG")
-            .eq("source_name", "SG:kup_pipeline")
+            .eq("country", "MN")
+            .eq("source_name", "MN:kup_pipeline")
             .is_("deleted_at", "null")
             .execute()
             .data or []
@@ -469,7 +471,7 @@ async def _perplexity_search(query: str, api_key: str) -> str | None:
                     "content": (
                         "You are a pharmaceutical regulatory expert. "
                         "Provide factual, concise information about drug regulatory status "
-                        "and market conditions in Singapore and Southeast Asia. "
+                        "and market conditions in Mongolia and Central Asia. "
                         "Always cite sources when available."
                     ),
                 },
@@ -574,7 +576,7 @@ def _build_analysis_prompt(
     static_section = ""
     if static_context_text:
         static_section = (
-            f"\n## 시장 조사 데이터 (HSA CSV + GeBIZ CSV + 브로슈어)\n"
+            f"\n## 시장 조사 데이터 (MMRA/EMD/공공조달 + 브로슈어)\n"
             f"{static_context_text}\n"
         )
 
@@ -585,13 +587,13 @@ def _build_analysis_prompt(
     product_type = meta.get("product_type", "일반제")
     db_facts = _build_db_facts(db_row)
 
-    return f"""당신은 싱가포르 의약품 수출 가능성을 분석하는 전문 컨설턴트입니다.
-아래 품목에 대해 싱가포르 1공정(규제 적합성·시장 진입 가능성) 관점에서 수출 적합성을 판단하세요.
+    return f"""당신은 몽골 의약품 수출 가능성을 분석하는 전문 컨설턴트입니다.
+아래 품목에 대해 몽골 1공정(규제 적합성·시장 진입 가능성) 관점에서 수출 적합성을 판단하세요.
 PBS 공개 스케줄에서 추출한 참고 가격(DPMQ)이 있으면 반드시 활용하되,
-반드시 "(PBS, 방법론적 추산)" 라벨을 붙이고 싱가포르 약가·ERP 직접 벤치마크가 아님을 분명히 하세요.
+반드시 "(국제 참고가, 방법론적 추산)" 라벨을 붙이고 몽골 약가 직접 벤치마크가 아님을 분명히 하세요.
 사실 우선순위:
-1) 기관 원문 데이터(HSA/MOH/PBS/가이드라인)와 정적 컨텍스트
-2) PBS 참고 가격 블록(있을 때)
+1) 기관 원문 데이터(MMRA/EMD/HIF/tender.gov.mn/보건부)와 정적 컨텍스트
+2) 몽골 약가·공공조달 및 국제 참고 가격 블록(있을 때)
 3) Perplexity 실시간 컨텍스트(있을 때만 보강)
 4) 일반 추론
 근거가 불충분하면 단정하지 말고 조건부/리스크로 명시하세요.
@@ -604,7 +606,7 @@ PBS 공개 스케줄에서 추출한 참고 가격(DPMQ)이 있으면 반드시 
 - 제품 유형: {product_type}
 - 시장 세그먼트: {meta['market_segment']}
 - 치료 영역: {meta['therapeutic_area']}
-- HSA 등재 상태: {meta['hsa_reg']}
+- MMRA 등록 상태: {meta['hsa_reg']}
 - 주요 리스크: {meta['key_risk']}
 
 ## 내부 저장 데이터 (원문 출처 메타 포함)
@@ -614,11 +616,11 @@ PBS 공개 스케줄에서 추출한 참고 가격(DPMQ)이 있으면 반드시 
 {reg_context}
 
 ## 분석 과제
-1. HSA 등재 상태 및 진입 경로 (신규 NDA Full / 동등성 심사 / 복합제 별도 등록)
-2. GeBIZ 조달 이력 기반 공공 수요 존재 여부 및 발주기관 특성
+1. MMRA 등록 상태 및 진입 경로 (신규 등록 / 제네릭·동등성 / 복합제 별도 검토)
+2. tender.gov.mn 조달 이력 기반 공공 수요 존재 여부 및 발주기관 특성
 3. 경쟁품 수 및 처방 분류에 따른 시장 접근 전략
 4. 주요 규제 장벽 및 예상 등록 타임라인
-5. PBS 참고가(있을 때)를 시장·무역 논의에 1문장 이상 반영
+5. 몽골 MNT 기준 약가·입찰가 또는 국제 참고가(있을 때)를 시장·무역 논의에 1문장 이상 반영
 6. 최종 판정: 적합(등재·채널 확보) / 조건부(등록 선결 후 가능) / 부적합
 
 ▶ 출력 형식 규칙 (반드시 준수):
@@ -629,7 +631,7 @@ PBS 공개 스케줄에서 추출한 참고 가격(DPMQ)이 있으면 반드시 
 - 제조사명을 본문에 언급하지 마세요.
 - "Supabase에 따르면", "DB에 따르면", "내부 저장소 기준" 같은 표현을 본문에 쓰지 마세요.
 - 두괄식 판정 근거 및 시장 진출 전략 문장에는 반드시 기관+자료명을 명시하세요.
-  예: "HSA Therapeutic Products Register(조회일: YYYY-MM-DD)에 따르면 ...", "MOH 통계 연보(연도)에 따르면 ..."
+  예: "MMRA 등록 공시(조회일: YYYY-MM-DD)에 따르면 ...", "EMD 약가 고시(연도)에 따르면 ..."
 - 각 핵심 근거 문장에는 가능하면 수치/상태값(예: 등재 여부, 경쟁품 수, 등록 유형)을 1개 이상 포함하세요.
 
 문장 톤 규칙:
@@ -641,13 +643,13 @@ PBS 공개 스케줄에서 추출한 참고 가격(DPMQ)이 있으면 반드시 
 {{
   "verdict": "적합" | "부적합" | "조건부",
   "verdict_en": "SUITABLE" | "UNSUITABLE" | "CONDITIONAL",
-  "rationale": "<한 문단 요약. PBS 참고가가 있으면 한 문장 안에 (PBS, 방법론적 추산) 포함. 최대 320자>",
+  "rationale": "<한 문단 요약. 국제 참고가가 있으면 한 문장 안에 (국제 참고가, 방법론적 추산) 포함. 최대 320자>",
   "basis_market_medical": "<시장/의료 근거 2~3문장>",
   "basis_regulatory": "<규제 근거 2~3문장>",
-  "basis_trade": "<무역/유통 근거 2~3문장. PBS DPMQ·환율 참고 시 무역/가격 맥락에 반영>",
+  "basis_trade": "<무역/유통 근거 2~3문장. MNT 약가·입찰가·환율 참고 시 무역/가격 맥락에 반영>",
   "key_factors": ["<요인1>", "<요인2>", "<요인3>"],
-  "entry_pathway": "<권장 진입 경로: NDA Full / 동등성(Abridged) / 복합제 별도 등록 / 브랜드 등록>",
-  "price_positioning_pbs": "<가격 포지셔닝 2~3문장. 반드시 완전한 문장으로만 작성. PBS DPMQ가 확보된 경우 'DPMQ AUD X.XX, 참고 SGD Y.YY 수준(PBS, 방법론적 추산)'을 포함. PBS 미등재(204) 또는 데이터 없는 경우 '단일 가격이 공개되어 있으나 대상 품목 미등재로 직접 약가 벤치마크 산출이 제한적이며, [레퍼런스 경쟁품명] 기존 약가를 벤치마크로 한 상대적 가격 전략 수립이 필요합니다.'와 같이 서술. '제시할 수 없다' 같은 불완전 표현 사용 금지.>",
+  "entry_pathway": "<권장 진입 경로: MMRA 신규 등록 / 제네릭·동등성 / 복합제 별도 검토 / HIF·공공조달 진입>",
+  "price_positioning_pbs": "<가격 포지셔닝 2~3문장. 반드시 완전한 문장으로만 작성. MNT 기준 약가·입찰가가 있으면 이를 포함하고, 국제 참고가만 있으면 '국제 참고가, 방법론적 추산'으로 명시하세요. 데이터가 제한적이면 몽골 내 경쟁 성분·공공조달 낙찰가·민간 유통마진을 벤치마크로 한 상대적 가격 전략 수립이 필요하다고 서술하세요.>",
   "risks_conditions": "<진입 시 리스크/조건 2~3문장>",
   "sources": [
     {{"name": "<출처명>", "url": "<URL 또는 '내부 데이터'>"}}
@@ -742,7 +744,7 @@ def _sanitize_source_attribution_phrase(text: str) -> str:
     rules: list[tuple[str, str]] = [
         (
             r"Supabase\s*(및|와)?\s*HSA\s*(시장\s*조사\s*)?데이터에\s*따르면",
-            "HSA 공개 자료에 따르면",
+            "MMRA·EMD 공개 자료에 따르면",
         ),
         (r"Supabase\s*데이터에\s*따르면", "공개 기관 자료에 따르면"),
         (r"DB\s*데이터에\s*따르면", "공개 기관 자료에 따르면"),
@@ -761,12 +763,14 @@ def _sanitize_source_attribution_phrase(text: str) -> str:
 
 def _infer_source_name_from_url(url: str) -> str:
     u = (url or "").lower()
-    if "hsa.gov.sg" in u:
-        return "HSA Singapore"
-    if "moh.gov.sg" in u:
-        return "MOH Singapore"
-    if "healthhub.sg" in u:
-        return "HealthHub Singapore"
+    if "mmra.gov.mn" in u:
+        return "MMRA Mongolia"
+    if "emd.gov.mn" in u:
+        return "EMD Mongolia"
+    if "moh.gov.mn" in u:
+        return "MOH Mongolia"
+    if "tender.gov.mn" in u:
+        return "tender.gov.mn"
     if "pharmaceutical-benefits-scheme" in u or "pbs.gov.au" in u:
         return "PBS Public Schedule"
     if "data.gov.sg" in u:
@@ -839,8 +843,8 @@ def _normalize_price_positioning_pbs(
     out = dict(result)
     default_line = (
         "단일 가격이 공개되어 있으나, 대상 품목 미등재로 인해 직접 약가 벤치마크를 "
-        "산출하기엔 제한적입니다. 싱가포르에서는 기존 경쟁품의 병원·약국 공급가와 "
-        "처방 채널 가격대를 기준으로 상대 가격 전략을 수립하는 접근이 적절합니다."
+        "산출하기엔 제한적입니다. 몽골에서는 기존 경쟁품의 EMD 약가, HIF 상환 기준, "
+        "공공조달 낙찰가와 민간 유통마진을 기준으로 상대 가격 전략을 수립하는 접근이 적절합니다."
     )
 
     current = str(out.get("price_positioning_pbs", "") or "").strip()
@@ -849,14 +853,10 @@ def _normalize_price_positioning_pbs(
 
     if getattr(pbs_res, "dpmq_aud", None) is not None:
         aud = float(getattr(pbs_res, "dpmq_aud"))
-        sgd = getattr(pbs_res, "dpmq_sgd_hint", None)
-        if sgd is not None:
-            ref = f"DPMQ AUD {aud:.2f}(참고 SGD {float(sgd):.2f} 수준, PBS 방법론적 추산)"
-        else:
-            ref = f"DPMQ AUD {aud:.2f}(PBS 방법론적 추산)"
+        ref = f"DPMQ AUD {aud:.2f}(국제 참고가, 방법론적 추산)"
         out["price_positioning_pbs"] = (
             f"{ref}이 공개되어 있으나, 직접 약가 벤치마크로 단정하기에는 제한적입니다. "
-            "싱가포르에서는 기존 경쟁품의 병원·약국 공급가를 기준으로 상대 가격 전략을 수립하는 접근이 적절합니다."
+            "몽골에서는 기존 경쟁품의 EMD 약가, HIF 상환 기준, 공공조달 낙찰가를 기준으로 상대 가격 전략을 수립하는 접근이 적절합니다."
         )
         return out
 
@@ -1004,7 +1004,7 @@ async def analyze_product(
     claude_model_id = _claude_analysis_model_id()
     claude_error_detail: str | None = None
 
-    # 정적 데이터 컨텍스트 로드 (HSA CSV + PDF 스니펫)
+    # 정적 데이터 컨텍스트 로드 (MMRA/EMD/조달 + PDF 스니펫)
     static_context_text: str | None = None
     try:
         from utils.static_data import get_product_context, context_to_prompt_text
@@ -1055,9 +1055,9 @@ async def analyze_product(
             )
         else:
             query = (
-                f"Singapore HSA regulatory status and formulary context for "
+                f"Mongolia MMRA registration status, EMD/HIF pricing, and procurement context for "
                 f"{meta['trade_name']} ({meta['inn']}). "
-                f"Recent regulatory or clinical guideline updates only — no retail prices."
+                f"Recent regulatory, reimbursement, tender, and distributor updates only."
             )
         perplexity_context = await _perplexity_search(query, perplexity_key)
         if perplexity_context:
@@ -1090,7 +1090,7 @@ async def analyze_product(
         pbs_fallback_price = ""
         if pbs_res.dpmq_aud is not None:
             sgd_part = (
-                f"(참고 SGD 약 {pbs_res.dpmq_sgd_hint:.2f} 가정) "
+                f"(국제 참고가, 방법론적 추산) "
                 if pbs_res.dpmq_sgd_hint is not None
                 else ""
             )
@@ -1144,15 +1144,14 @@ async def analyze_product(
         if pbs_res.dpmq_aud is not None:
             result["price_positioning_pbs"] = (
                 f"PBS DPMQ 약 AUD {pbs_res.dpmq_aud:.2f}, "
-                f"참고 SGD 약 {pbs_res.dpmq_sgd_hint} 수준(환율 변동). "
-                "싱가포르 소매가와 동일시하지 않습니다."
+                "국제 참고가, 방법론적 추산입니다. 몽골 약가와 동일시하지 않습니다."
             )
         elif haiku_estimate:
             result["price_positioning_pbs"] = haiku_estimate
         elif pbs_res.fetch_error:
             result["price_positioning_pbs"] = (
                 "PBS 미등재 또는 조회 오류로 DPMQ 참고가를 직접 산출하기엔 제한적입니다. "
-                "싱가포르 약가 포지셔닝은 동일 성분 경쟁 제품의 기존 약가를 벤치마크로 하여 "
+                "몽골 약가 포지셔닝은 동일 성분 경쟁 제품의 EMD 약가·공공조달 낙찰가를 벤치마크로 하여 "
                 "tender 입찰 경쟁력을 고려한 상대적 가격 전략 수립이 필요합니다."
             )
 
@@ -1174,21 +1173,21 @@ async def analyze_product(
         "price_positioning_pbs": result.get("price_positioning_pbs", ""),
         "risks_conditions": result.get("risks_conditions", ""),
         "section_source_map": {
-            "제품 식별": "supabase.products (SG:kup_pipeline)",
+            "제품 식별": "supabase.products (MN:kup_pipeline)",
             "핵심 판정": (
                 f"Claude Haiku ({claude_model_id})"
                 if analysis_error is None else "fallback (API 미설정/실패)"
             ),
             "두괄식 근거 - 시장/의료": (
-                "Claude Haiku + HSA/MOH/공개기관 컨텍스트"
+                "Claude Haiku + MMRA/EMD/HIF/공개기관 컨텍스트"
                 if analysis_error is None else "fallback"
             ),
             "두괄식 근거 - 규제": (
-                "Claude Haiku + HSA/MOH/공개기관 컨텍스트"
+                "Claude Haiku + MMRA/EMD/HIF/공개기관 컨텍스트"
                 if analysis_error is None else "fallback"
             ),
             "두괄식 근거 - 무역": (
-                "Claude Haiku + HSA/MOH/공개기관 컨텍스트"
+                "Claude Haiku + MMRA/EMD/HIF/공개기관 컨텍스트"
                 if analysis_error is None else "fallback"
             ),
             "시장 진출 전략 - 진입 채널 권고": (
@@ -1196,7 +1195,7 @@ async def analyze_product(
                 if analysis_error is None else "fallback"
             ),
             "시장 진출 전략 - 리스크/조건": (
-                "Claude Haiku + HSA/MOH/공개기관 컨텍스트"
+                "Claude Haiku + MMRA/EMD/HIF/공개기관 컨텍스트"
                 if analysis_error is None else "fallback"
             ),
         },
@@ -1219,7 +1218,7 @@ async def analyze_custom_product(
     inn: str,
     dosage_form: str = "",
 ) -> dict[str, Any]:
-    """사용자 입력 신약에 대한 싱가포르 수출 적합성 분석.
+    """사용자 입력 신약에 대한 몽골 수출 적합성 분석.
 
     Supabase DB 행 없이 입력 정보 + PBS 참고가 + Claude로만 실행.
     """
@@ -1231,7 +1230,7 @@ async def analyze_custom_product(
         "dosage_form":      dosage_form,
         "market_segment":   "처방전 의약품",
         "therapeutic_area": "",
-        "hsa_reg":          "미등재(신약)",
+        "hsa_reg":          "MMRA 등록 필요(신약)",
         "key_risk":         "",
         "manufacturer":     "",
         "product_type":     "신약",
@@ -1293,7 +1292,7 @@ async def analyze_custom_product(
         if pbs_res.dpmq_aud is not None:
             result["price_positioning_pbs"] = (
                 f"PBS DPMQ 약 AUD {pbs_res.dpmq_aud:.2f}, "
-                f"참고 SGD 약 {pbs_res.dpmq_sgd_hint} 수준(환율 변동)."
+                "국제 참고가, 방법론적 추산."
             )
         elif haiku_estimate:
             result["price_positioning_pbs"] = haiku_estimate
@@ -1305,7 +1304,7 @@ async def analyze_custom_product(
         "inn_label":             f"{inn} {dosage_form}".strip(),
         "market_segment":        "처방전 의약품",
         "product_type":          "신약",
-        "hsa_reg":               "미등재(신약)",
+        "hsa_reg":               "MMRA 등록 필요(신약)",
         "verdict":               result.get("verdict"),
         "verdict_en":            result.get("verdict_en"),
         "rationale":             result.get("rationale", ""),
@@ -1350,7 +1349,7 @@ async def analyze_all(
         품목별 분석 결과 리스트
     """
     from utils.db import fetch_kup_products
-    kup_rows = fetch_kup_products("SG")
+    kup_rows = fetch_kup_products("MN")
     db_rows = {r["product_id"]: r for r in kup_rows}
 
     tasks = [

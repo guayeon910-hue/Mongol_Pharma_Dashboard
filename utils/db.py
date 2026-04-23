@@ -14,7 +14,7 @@ _DEFAULT_KEY = (
     ".eCFcjx7gOhiv7mCyR2RiadndE9d6e6kVOWysHrarZTM"
 )
 
-_DEFAULT_COUNTRY = "SG"
+_DEFAULT_COUNTRY = "MN"
 _ALLOWED_COUNTRIES = frozenset({"SG", "MN", "UY"})
 _raw_client_cache: Any = None
 

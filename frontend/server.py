@@ -47,24 +47,33 @@ async def _lifespan(app: FastAPI):
 
 
 LEGACY_PRODUCT_KEY_MAP: dict[str, str] = {
-    "MN_ciloduo_cilosta_rosuva": "SG_ciloduo_cilosta_rosuva",
-    "MN_rosumeg_combigel": "SG_rosumeg_combigel",
-    "MN_atmeg_combigel": "SG_atmeg_combigel",
-    "MN_gastiin_cr_mosapride": "SG_gastiin_cr_mosapride",
-    "MN_omethyl_omega3_2g": "SG_omethyl_omega3_2g",
-    "MN_hydrine_hydroxyurea": "SG_hydrine_hydroxyurea_500",
-    "MN_hydrine_hydroxyurea_500": "SG_hydrine_hydroxyurea_500",
-    "MN_sereterol_activair": "SG_sereterol_activair",
-    "MN_gadvoa_gadobutrol": "SG_gadvoa_gadobutrol_604",
-    "MN_gadvoa_gadobutrol_604": "SG_gadvoa_gadobutrol_604",
+    "sereterol-activair": "MN_sereterol_activair",
+    "omethyl-cutielet": "MN_omethyl_omega3_2g",
+    "hydrine": "MN_hydrine_hydroxyurea_500",
+    "gadvoa-inj": "MN_gadvoa_gadobutrol_604",
+    "rosumeg-combigel": "MN_rosumeg_combigel",
+    "atmeg-combigel": "MN_atmeg_combigel",
+    "ciloduo": "MN_ciloduo_cilosta_rosuva",
+    "gastiin-cr": "MN_gastiin_cr_mosapride",
+    "MN_hydrine_hydroxyurea": "MN_hydrine_hydroxyurea_500",
+    "MN_gadvoa_gadobutrol": "MN_gadvoa_gadobutrol_604",
+    "SG_ciloduo_cilosta_rosuva": "MN_ciloduo_cilosta_rosuva",
+    "SG_rosumeg_combigel": "MN_rosumeg_combigel",
+    "SG_atmeg_combigel": "MN_atmeg_combigel",
+    "SG_gastiin_cr_mosapride": "MN_gastiin_cr_mosapride",
+    "SG_omethyl_omega3_2g": "MN_omethyl_omega3_2g",
+    "SG_hydrine_hydroxyurea_500": "MN_hydrine_hydroxyurea_500",
+    "SG_sereterol_activair": "MN_sereterol_activair",
+    "SG_gadvoa_gadobutrol_604": "MN_gadvoa_gadobutrol_604",
 }
 
 
 def _normalize_product_key(product_key: str) -> str:
-    return LEGACY_PRODUCT_KEY_MAP.get(product_key, product_key)
+    key = str(product_key or "").strip()
+    return LEGACY_PRODUCT_KEY_MAP.get(key, key or "MN_sereterol_activair")
 
 
-app = FastAPI(title="SG Analysis Dashboard", version="3.0.0", lifespan=_lifespan)
+app = FastAPI(title="MN Analysis Dashboard", version="3.0.0", lifespan=_lifespan)
 
 import os as _os
 _cors_origins = _os.environ.get("CORS_ORIGINS", "*").split(",")
@@ -231,7 +240,7 @@ def _parse_perplexity_news_items(raw_text: str) -> list[dict[str, str]]:
 
 @app.get("/api/news")
 async def api_news() -> JSONResponse:
-    """Perplexity 기반 싱가포르 의약품 시장 뉴스 (30분 캐시)."""
+    """Perplexity 기반 몽골 제약 시장 뉴스 (30분 캐시)."""
     import time as _time
     import os
     import httpx
@@ -250,17 +259,17 @@ async def api_news() -> JSONResponse:
                 {
                     "role": "system",
                     "content": (
-                        "You are a Singapore pharmaceutical market analyst. "
+                        "You are a Mongolia pharmaceutical market analyst. "
                         "Return ONLY a JSON array with up to 6 recent news items. "
-                        "All 'title' values MUST be written in Korean. "
-                        "Translate any English titles into natural Korean."
+                        "All 'title' values MUST be written in Korean (한국어). "
+                        "Translate any English or Mongolian titles into natural Korean."
                     ),
                 },
                 {
                     "role": "user",
                     "content": (
-                        "Find the latest Singapore pharmaceutical market, HSA regulatory news, "
-                        "drug pricing policy, hospital procurement, and public sector tender news. "
+                        "Find the latest Mongolia pharmaceutical market, MMRA regulatory news, "
+                        "drug pricing policy (EMD, HIF), and public procurement (tender.gov.mn). "
                         "Return a strict JSON array. Each item must have keys: "
                         "title (Korean translation required), source, date, link. "
                         "Translate all titles to Korean. Do not use English titles."
@@ -304,12 +313,11 @@ async def api_news() -> JSONResponse:
 
 @app.get("/api/macro")
 async def api_macro() -> JSONResponse:
-    from utils.sg_macro import get_sg_macro_cards
+    from utils.mn_macro import get_mn_macro_cards
+    return JSONResponse(get_mn_macro_cards())
 
-    return JSONResponse(get_sg_macro_cards())
 
-
-# ── 환율 (yfinance SGD/KRW) ───────────────────────────────────────────────────
+# ── 환율 (yfinance MNT/KRW) ───────────────────────────────────────────────────
 
 _exchange_cache: dict[str, Any] = {"data": None, "ts": 0.0}
 _EXCHANGE_TTL_SEC = 0.0
@@ -317,46 +325,8 @@ _EXCHANGE_TTL_SEC = 0.0
 
 @app.get("/api/exchange")
 async def api_exchange() -> JSONResponse:
-    """SGD/KRW 실시간 환율 (yfinance). 짧은 캐시로 준실시간 제공."""
-    import time as _time
-
-    if _exchange_cache["data"] and _time.time() - _exchange_cache["ts"] < _EXCHANGE_TTL_SEC:
-        return JSONResponse(_exchange_cache["data"])
-
-    def _fetch() -> dict[str, Any]:
-        import yfinance as yf  # type: ignore[import]
-        usd_krw = float(yf.Ticker("USDKRW=X").fast_info.last_price)
-        sgd_krw = float(yf.Ticker("SGDKRW=X").fast_info.last_price)
-        usd_sgd = float(yf.Ticker("USDSGD=X").fast_info.last_price)
-        sgd_usd = 1.0 / usd_sgd if usd_sgd > 0 else 0.74
-        return {
-            "sgd_usd": round(sgd_usd, 4),
-            "sgd_krw": round(sgd_krw, 2),
-            "usd_krw": round(usd_krw, 2),
-            "usd_sgd": round(usd_sgd, 4),
-            "source": "Yahoo Finance",
-            "fetched_at": _time.time(),
-            "ok": True,
-        }
-
-    try:
-        loop = asyncio.get_event_loop()
-        data = await loop.run_in_executor(None, _fetch)
-        _exchange_cache["data"] = data
-        _exchange_cache["ts"]   = _time.time()
-        return JSONResponse(data)
-    except Exception as exc:
-        fallback: dict[str, Any] = {
-            "sgd_usd": 0.74,
-            "sgd_krw": 1085.0,
-            "usd_krw": 1393.0,
-            "usd_sgd": 1.3514,
-            "source": "폴백 (Yahoo Finance 연결 실패)",
-            "fetched_at": _time.time(),
-            "ok": False,
-            "error": str(exc),
-        }
-        return JSONResponse(fallback)
+    """MNT/KRW 실시간 환율. 기존 /api/exchange 호출도 몽골 환율로 응답."""
+    return await api_exchange_mnt()
 
 
 # ── 단일 품목 파이프라인 (분석 + 논문 + PDF) ──────────────────────────────────
@@ -374,7 +344,7 @@ async def _run_pipeline_for_product(product_key: str) -> None:
 
         from utils.db import fetch_kup_products
         try:
-            kup_rows = await asyncio.to_thread(fetch_kup_products, "SG")
+            kup_rows = await asyncio.to_thread(fetch_kup_products, "MN")
         except Exception as exc:
             kup_rows = []
             await _emit({"phase": "pipeline", "message": f"Supabase 조회 폴백: {exc}", "level": "warn"})
@@ -422,7 +392,7 @@ async def _run_pipeline_for_product(product_key: str) -> None:
                 references=_refs_map,
             )
         )
-        _pdf_name = f"sg_report_{product_key}_{_ts}.pdf"
+        _pdf_name = f"mn_report_{product_key}_{_ts}.pdf"
         _pdf_path = _reports_dir / _pdf_name
         await asyncio.to_thread(render_pdf, _report, _pdf_path)
 
@@ -473,7 +443,7 @@ async def _run_custom_pipeline(trade_name: str, inn: str, dosage_form: str) -> N
         _reports_dir2.mkdir(parents=True, exist_ok=True)
 
         try:
-            _products_db2 = await asyncio.to_thread(fetch_kup_products, "SG")
+            _products_db2 = await asyncio.to_thread(fetch_kup_products, "MN")
         except Exception:
             _products_db2 = []
         _refs_map2 = {"custom": refs}
@@ -485,7 +455,7 @@ async def _run_custom_pipeline(trade_name: str, inn: str, dosage_form: str) -> N
                 references=_refs_map2,
             )
         )
-        _pdf_name2 = f"sg_report_custom_{_ts2}.pdf"
+        _pdf_name2 = f"mn_report_custom_{_ts2}.pdf"
         _pdf_path2 = _reports_dir2 / _pdf_name2
         await asyncio.to_thread(render_pdf, _report2, _pdf_path2)
 
@@ -587,7 +557,7 @@ def _report_glob_paths() -> list[Path]:
     if not reports_dir.exists():
         return []
     pdfs: list[Path] = []
-    for pattern in ("sg_report_*.pdf", "mn_report_*.pdf"):
+    for pattern in ("mn_report_*.pdf", "sg_report_*.pdf"):
         pdfs.extend([p for p in reports_dir.glob(pattern) if p.is_file()])
     return pdfs
 
@@ -693,7 +663,7 @@ async def generate_p2_report(body: P2ReportBody) -> JSONResponse:
     _reports_dir.mkdir(parents=True, exist_ok=True)
 
     safe_name = re.sub(r"[^\w가-힣]", "_", body.product_name)[:30] or "product"
-    pdf_name  = f"sg_p2_{safe_name}_{_ts}.pdf"
+    pdf_name  = f"mn_p2_{safe_name}_{_ts}.pdf"
     pdf_path  = _reports_dir / pdf_name
 
     p2_data = {
@@ -765,20 +735,19 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
 아래 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
 {{
   "product_name": "제품명 (없으면 '미상')",
-  "ref_price_sgd": 숫자 또는 null,
-  "ref_price_currency": "SGD 또는 USD",
+  "ref_price_mnt": 숫자 또는 null,
+  "ref_price_currency": "MNT 또는 USD",
   "ref_price_text": "원문 가격 텍스트 (없으면 빈 문자열)",
-  "competitor_prices": [{{"name": "경쟁사명", "price_sgd": 숫자}}],
+  "competitor_prices": [{{"name": "경쟁사명", "price_mnt": 숫자}}],
   "market_context": "시장 맥락 요약 (1-2문장)",
   "hs_code": "HS 코드 (없으면 빈 문자열)",
   "verdict": "수출 적합성 판정 (적합/조건부/부적합/미상)"
 }}
 
 가격 추출 규칙 (반드시 준수):
-- '참고 SGD X.XX', 'SGD X.XX 수준', 'DPMQ ... 참고 SGD X.XX' 등 SGD 금액이 포함된 모든 표현에서 숫자를 추출하세요.
-- 'PBS 방법론적 추산', '싱가포르 약가 아님' 같은 면책 문구가 있어도 SGD 숫자는 ref_price_sgd에 넣으세요.
-- 보고서의 '참고 가격', '가격 포지셔닝', 'DPMQ' 섹션을 특히 확인하세요.
-- USD($) 금액만 있다면 ref_price_sgd는 null로, ref_price_currency는 'USD'로, ref_price_text에 원문 그대로 기록하세요."""
+- '참고 MNT X', 'MNT X 수준', '₮ X', 'X төгрөг' 등 MNT 금액이 포함된 모든 표현에서 숫자를 추출하세요.
+- USD($) 금액만 있다면 ref_price_mnt는 null로, ref_price_currency는 'USD'로, ref_price_text에 원문 그대로 기록하세요.
+- 보고서의 '참고 가격', '가격 포지셔닝', 'EMD', 'HIF', '공공 조달' 섹션을 특히 확인하세요."""
 
         extract_resp = await asyncio.to_thread(
             lambda: client.messages.create(
@@ -797,7 +766,7 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
         except Exception:
             extracted = {
                 "product_name": "미상",
-                "ref_price_sgd": None,
+                "ref_price_mnt": None,
                 "ref_price_text": "",
                 "market_context": "",
                 "verdict": "미상",
@@ -806,7 +775,7 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
         _p2_ai_task["extracted"] = extracted
         await _emit({
             "phase": "p2_pipeline",
-            "message": f"가격 추출 완료 — 참조가: SGD {extracted.get('ref_price_sgd', '미확인')}",
+            "message": f"가격 추출 완료 — 참조가: MNT {extracted.get('ref_price_mnt', '미확인')}",
             "level": "success",
         })
 
@@ -815,17 +784,21 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
         await _emit({"phase": "p2_pipeline", "message": "yfinance 환율 조회", "level": "info"})
 
         exchange_rates: dict[str, Any] = {
-            "sgd_krw": 1085.0, "usd_krw": 1393.0,
-            "sgd_usd": 0.7795, "source": "폴백값 (Yahoo Finance 연결 실패)",
+            "mnt_krw": 0.4037, "usd_krw": 1393.0, "mnt_usd": 0.000290,
+            "usd_mnt": 3450.0, "source": "폴백값 (Yahoo Finance 연결 실패)",
         }
         try:
             import yfinance as yf  # type: ignore[import]
 
             def _fetch_rates() -> dict[str, Any]:
+                usd_mnt = float(yf.Ticker("USDMNT=X").fast_info.last_price)
+                usd_krw = float(yf.Ticker("USDKRW=X").fast_info.last_price)
+                mnt_usd = 1.0 / usd_mnt if usd_mnt > 0 else 0.000290
                 return {
-                    "sgd_krw": round(float(yf.Ticker("SGDKRW=X").fast_info.last_price), 2),
-                    "usd_krw": round(float(yf.Ticker("USDKRW=X").fast_info.last_price), 2),
-                    "sgd_usd": round(float(yf.Ticker("SGDUSD=X").fast_info.last_price), 4),
+                    "mnt_krw": round(mnt_usd * usd_krw, 5),
+                    "usd_krw": round(usd_krw, 2),
+                    "mnt_usd": round(mnt_usd, 7),
+                    "usd_mnt": round(usd_mnt, 2),
                     "source": "Yahoo Finance (실시간)",
                 }
 
@@ -836,7 +809,7 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
         _p2_ai_task["exchange_rates"] = exchange_rates
         await _emit({
             "phase": "p2_pipeline",
-            "message": f"환율 — 1 SGD = {exchange_rates['sgd_krw']} KRW",
+            "message": f"환율 — 1 MNT = {exchange_rates['mnt_krw']} KRW",
             "level": "success",
         })
 
@@ -844,14 +817,14 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
         _p2_ai_task.update({"step": "ai_analysis", "step_label": "AI 최종 분석 중…"})
         await _emit({"phase": "p2_pipeline", "message": "Claude Haiku — 최종 가격 전략 분석", "level": "info"})
 
-        ref_price    = extracted.get("ref_price_sgd") or 0
-        ref_display  = f"SGD {float(ref_price):.2f}" if ref_price else (extracted.get("ref_price_text") or "미확인")
-        sgd_krw      = exchange_rates["sgd_krw"]
-        market_label = "공공 시장 (ALPS/조달청 채널)" if market == "public" else "민간 시장 (병원·약국·체인 채널)"
+        ref_price    = extracted.get("ref_price_mnt") or 0
+        ref_display  = f"MNT {float(ref_price):,.0f}" if ref_price else (extracted.get("ref_price_text") or "미확인")
+        mnt_krw      = exchange_rates["mnt_krw"]
+        market_label = "공공 시장 (HIF/EMD/조달 채널)" if market == "public" else "민간 시장 (병원·약국·도매 채널)"
         verdict_src  = extracted.get("verdict", "미상")
         competitor_json = json.dumps(extracted.get("competitor_prices", []), ensure_ascii=False)
 
-        analysis_prompt = f"""싱가포르 수출 가격 전략을 수립해주세요.
+        analysis_prompt = f"""몽골 수출 가격 전략을 수립해주세요.
 
 ## 추출된 보고서 정보
 - 제품명: {extracted.get('product_name', '미상')}
@@ -860,25 +833,25 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
 - 참조가 원문: {extracted.get('ref_price_text', '없음')}
 - HS 코드: {extracted.get('hs_code', '미상')}
 - 시장: {market_label}
-- 현재 환율: 1 SGD = {sgd_krw:.2f} KRW (실시간 Yahoo Finance)
+- 현재 환율: 1 MNT = {mnt_krw:.5f} KRW (실시간 Yahoo Finance)
 - 경쟁사 가격: {competitor_json}
 - 시장 맥락: {extracted.get('market_context', '정보 없음')}
 
 ## 요청
-1. 싱가포르 제약 시장의 특성, 판정 결과, 시장 구분을 종합해 최종 수출 권고가를 산정하세요.
+1. 몽골 제약 시장의 특성, 판정 결과, 시장 구분을 종합해 최종 수출 권고가를 산정하세요.
 2. 시나리오는 공격·평균·보수 3개로 구분하세요. 각 시나리오마다:
    - 가격 근거·포지셔닝 전략·적합 상황을 포함한 한 문단(3-4문장)으로 reason을 작성하세요.
-   - 구체적인 계산식을 formula 필드에 작성하세요 (예: SGD 9.87 × 0.85 = SGD 8.39).
+   - 구체적인 계산식을 formula 필드에 작성하세요 (예: MNT 30,000 × 0.85 = MNT 25,500).
 3. rationale은 3-4문장으로 시장 근거·판정 근거·리스크를 포함해 서술하세요.
 
 아래 JSON 형식으로만 응답하세요 (다른 텍스트 없이):
 {{
-  "final_price_sgd": 숫자,
+  "final_price_mnt": 숫자,
   "rationale": "산정 이유 3-4문장",
   "scenarios": [
-    {{"name": "공격", "price_sgd": 숫자, "reason": "저마진 포지셔닝 정의·근거·적합 상황을 포함한 한 문단", "formula": "계산식 (예: SGD 9.87 × 0.85 = SGD 8.39)"}},
-    {{"name": "평균", "price_sgd": 숫자, "reason": "중간 포지셔닝 정의·근거·적합 상황을 포함한 한 문단", "formula": "계산식"}},
-    {{"name": "보수", "price_sgd": 숫자, "reason": "고마진 포지셔닝 정의·근거·적합 상황을 포함한 한 문단", "formula": "계산식"}}
+    {{"name": "공격", "price_mnt": 숫자, "reason": "저마진 포지셔닝 정의·근거·적합 상황을 포함한 한 문단", "formula": "계산식 (예: MNT 30,000 × 0.85 = MNT 25,500)"}},
+    {{"name": "평균", "price_mnt": 숫자, "reason": "중간 포지셔닝 정의·근거·적합 상황을 포함한 한 문단", "formula": "계산식"}},
+    {{"name": "보수", "price_mnt": 숫자, "reason": "고마진 포지셔닝 정의·근거·적합 상황을 포함한 한 문단", "formula": "계산식"}}
   ]
 }}
 
@@ -901,25 +874,26 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
         except Exception:
             final_est = (ref_price * 0.30) if ref_price else 0
             analysis = {
-                "final_price_sgd": round(final_est, 2),
+                "final_price_mnt": round(final_est),
                 "rationale": "AI 응답 파싱 중 오류가 발생했습니다. 기본값 30% 비율로 산정합니다.",
                 "scenarios": [
-                    {"name": "공격", "price_sgd": round(final_est * 0.88, 2),
+                    {"name": "공격", "price_mnt": round(final_est * 0.88),
                      "reason": "저마진 포지셔닝 — 시장 진입 초기, 자사가 손해를 감수하며 가격경쟁력을 앞세워 점유율을 선점합니다.",
-                     "formula": f"SGD {final_est:.2f} × 0.88 = SGD {round(final_est * 0.88, 2):.2f}"},
-                    {"name": "평균", "price_sgd": round(final_est, 2),
+                     "formula": f"MNT {final_est:,.0f} × 0.88 = MNT {round(final_est * 0.88):,.0f}"},
+                    {"name": "평균", "price_mnt": round(final_est),
                      "reason": "중간 포지셔닝 — 리스크와 마진의 균형을 유지하는 기본 산정가입니다.",
-                     "formula": f"SGD {final_est:.2f} (기준가 그대로)"},
-                    {"name": "보수", "price_sgd": round(final_est * 1.12, 2),
+                     "formula": f"MNT {final_est:,.0f} (기준가 그대로)"},
+                    {"name": "보수", "price_mnt": round(final_est * 1.12),
                      "reason": "고마진 포지셔닝 — 자사 제품이 시장 내 자리를 잡은 이후 마진율을 높여 이익 확대를 노립니다.",
-                     "formula": f"SGD {final_est:.2f} × 1.12 = SGD {round(final_est * 1.12, 2):.2f}"},
+                     "formula": f"MNT {final_est:,.0f} × 1.12 = MNT {round(final_est * 1.12):,.0f}"},
                 ],
             }
 
         _p2_ai_task["analysis"] = analysis
+        _final_price_for_log = float(analysis.get("final_price_mnt") or analysis.get("final_price_sgd") or 0)
         await _emit({
             "phase": "p2_pipeline",
-            "message": f"최종 분석 완료 — SGD {analysis.get('final_price_sgd', 0):.2f}",
+            "message": f"최종 분석 완료 — MNT {_final_price_for_log:,.0f}",
             "level": "success",
         })
 
@@ -935,7 +909,7 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
         _reports_dir_p2.mkdir(parents=True, exist_ok=True)
 
         _safe = _re2.sub(r"[^\w가-힣]", "_", extracted.get("product_name", "product"))[:30] or "product"
-        _pdf_name_p2 = f"sg_p2_{_safe}_{_ts_p2}.pdf"
+        _pdf_name_p2 = f"mn_p2_{_safe}_{_ts_p2}.pdf"
         _pdf_path_p2 = _reports_dir_p2 / _pdf_name_p2
 
         # AI 시나리오 필드명 정규화 (PDF generator는 label/price 사용)
@@ -944,7 +918,7 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
         for sc in raw_scenarios:
             norm_scenarios.append({
                 "label":   sc.get("name", sc.get("label", "")),
-                "price":   sc.get("price_sgd", sc.get("price", 0)),
+                "price":   sc.get("price_mnt", sc.get("price_sgd", sc.get("price", 0))),
                 "reason":  sc.get("reason", ""),
                 "formula": sc.get("formula", ""),
             })
@@ -953,7 +927,7 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
             "product_name": extracted.get("product_name", "미상"),
             "verdict":      verdict_src,
             "seg_label":    market_label,
-            "base_price":   analysis.get("final_price_sgd", 0),
+            "base_price":   analysis.get("final_price_mnt", analysis.get("final_price_sgd", 0)),
             "formula_str":  "",
             "mode_label":   "AI 분석 (Claude Haiku)",
             "scenarios":    norm_scenarios,
@@ -1066,7 +1040,7 @@ async def p2_pipeline_result_ai() -> JSONResponse:
 async def products() -> list[dict[str, Any]]:
     from utils.db import fetch_kup_products
     try:
-        return fetch_kup_products("SG")
+        return fetch_kup_products("MN")
     except Exception:
         return []
 
@@ -1089,10 +1063,10 @@ async def keys_status() -> dict[str, Any]:
 
 @app.get("/api/datasource/status")
 async def datasource_status() -> JSONResponse:
-    """Supabase 연결 상태와 싱가포르 분석 데이터 준비 상태 반환."""
+    """Supabase 연결 상태와 몽골 분석 데이터 준비 상태 반환."""
     try:
         from utils.db import get_client, fetch_kup_products
-        kup_rows = fetch_kup_products("SG")
+        kup_rows = fetch_kup_products("MN")
         kup_count = len(kup_rows)
 
         sb = get_client()
@@ -1100,14 +1074,14 @@ async def datasource_status() -> JSONResponse:
         context_source = "없음"
         try:
             ctx_rows = (
-                sb.table("sg_product_context")
-                .select("product_id", count="exact")
+                sb.table("mn_pricing")
+                .select("inn_name", count="exact")
                 .execute()
             )
             ctx_count = ctx_rows.count or 0
             context_source = (
-                f"sg_product_context {ctx_count}건"
-                if ctx_count else "sg_product_context 테이블 비어있음"
+                f"mn_pricing {ctx_count}건"
+                if ctx_count else "mn_pricing 테이블 비어있음"
             )
         except Exception:
             context_source = "조회 실패"
@@ -1143,7 +1117,7 @@ async def status() -> dict[str, Any]:
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
     """Render 헬스체크용 경량 엔드포인트."""
-    return {"ok": True, "service": "sg-analysis-dashboard"}
+    return {"ok": True, "service": "mn-analysis-dashboard"}
 
 
 @app.get("/api/stream")
@@ -1176,28 +1150,28 @@ async def stream() -> StreamingResponse:
 _buyer_task: dict[str, Any] = {}
 
 _PROD_LABELS: dict[str, str] = {
-    "SG_sereterol_activair": "Sereterol Activair (Fluticasone+Salmeterol)",
-    "SG_omethyl_omega3_2g": "Omethyl Cutielet (Omega-3 에틸에스테르 2g)",
-    "SG_hydrine_hydroxyurea_500": "Hydrine (Hydroxyurea 500mg)",
-    "SG_gadvoa_gadobutrol_604": "Gadvoa Inj. (Gadobutrol)",
-    "SG_rosumeg_combigel": "Rosumeg Combigel (Rosuvastatin+Omega-3)",
-    "SG_atmeg_combigel": "Atmeg Combigel (Atorvastatin+Omega-3)",
-    "SG_ciloduo_cilosta_rosuva": "Ciloduo (Cilostazol+Rosuvastatin)",
-    "SG_gastiin_cr_mosapride": "Gastiin CR (Mosapride citrate 15mg)",
+    "MN_sereterol_activair": "Sereterol Activair (Fluticasone+Salmeterol)",
+    "MN_omethyl_omega3_2g": "Omethyl Cutielet (Omega-3 에틸에스테르 2g)",
+    "MN_hydrine_hydroxyurea_500": "Hydrine (Hydroxyurea 500mg)",
+    "MN_gadvoa_gadobutrol_604": "Gadvoa Inj. (Gadobutrol)",
+    "MN_rosumeg_combigel": "Rosumeg Combigel (Rosuvastatin+Omega-3)",
+    "MN_atmeg_combigel": "Atmeg Combigel (Atorvastatin+Omega-3)",
+    "MN_ciloduo_cilosta_rosuva": "Ciloduo (Cilostazol+Rosuvastatin)",
+    "MN_gastiin_cr_mosapride": "Gastiin CR (Mosapride citrate 15mg)",
 }
 
 
 class BuyerRunBody(BaseModel):
-    product_key:     str = "SG_sereterol_activair"
+    product_key:     str = "MN_sereterol_activair"
     active_criteria: list[str] | None = None
-    target_country:  str = "Singapore"
+    target_country:  str = "Mongolia"
     target_region:   str = "Asia"
 
 
 async def _run_buyer_pipeline(
     product_key: str,
     active_criteria: list[str] | None = None,
-    target_country: str = "Singapore",
+    target_country: str = "Mongolia",
     target_region: str = "Asia",
 ) -> None:
     global _buyer_task
@@ -1260,7 +1234,7 @@ async def _run_buyer_pipeline(
         _reports_dir.mkdir(parents=True, exist_ok=True)
 
         safe = _re_b.sub(r"[^\w가-힣]", "_", product_key)[:30]
-        pdf_name = f"sg_buyers_{safe}_{_ts}.pdf"
+        pdf_name = f"mn_buyers_{safe}_{_ts}.pdf"
         pdf_path = _reports_dir / pdf_name
 
         await asyncio.to_thread(build_buyer_pdf, ranked, product_label, pdf_path)
@@ -1343,7 +1317,7 @@ async def buyer_report_download(name: str | None = None) -> Any:
                 filename=target.name, content_disposition_type="attachment",
             )
     # 최신 buyers PDF
-    pdfs = sorted(reports_dir.glob("sg_buyers_*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
+    pdfs = sorted(reports_dir.glob("mn_buyers_*.pdf"), key=lambda p: p.stat().st_mtime, reverse=True)
     if not pdfs:
         raise HTTPException(404, "바이어 보고서 없음")
     return FileResponse(
@@ -1591,7 +1565,7 @@ async def index() -> FileResponse:
 def main() -> None:
     import uvicorn
 
-    parser = argparse.ArgumentParser(description="SG 싱가포르 분석 대시보드")
+    parser = argparse.ArgumentParser(description="MN 몽골 분석 대시보드")
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--open", action="store_true")
