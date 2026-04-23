@@ -98,6 +98,51 @@ body {
 }
 .topbar-r { display: flex; align-items: center; gap: 10px; }
 
+.topbar-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.topbar-tab {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 12.5px;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+  transition: background .16s, color .16s;
+}
+.topbar-tab:hover { background: rgba(23,63,120,.08); color: var(--navy); }
+.topbar-tab.on { background: rgba(23,63,120,.12); color: var(--navy); }
+
+.topnav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.topnav-tab {
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 999px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.topnav-tab.tab {
+  color: var(--muted);
+  font-weight: 800;
+  font-size: 12.5px;
+}
+.topnav-tab.tab.on {
+  background: rgba(23,63,120,.10);
+  color: var(--navy);
+}
+
 .pill {
   height: 42px;
   padding: 0 14px 0 10px;
@@ -116,7 +161,7 @@ body {
 /* ── 4. 내비게이션 탭 ────────────────────────────────────────────────────── */
 .main {
   padding: 16px 28px 28px;
-  max-width: 1080px;
+  max-width: 1320px;
   margin-inline: auto;
 }
 
@@ -164,7 +209,7 @@ body {
 .page     { display: none; }
 .page.on  { display: block; }
 #p1 {
-  max-width: 1080px;
+  max-width: 1440px;
   margin: 0 auto;
 }
 
@@ -205,6 +250,34 @@ body {
 
 /* ── 7. 그리드 레이아웃 ──────────────────────────────────────────────────── */
 .g2 { display: grid; grid-template-columns: 1.05fr 1fr; gap: 10px; margin-bottom: 10px; }
+
+/* 시장조사 분석 화면(사우디 dashboard-grid 스타일) */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr;
+  gap: 14px;
+  align-items: stretch;
+}
+.col-left, .col-right { min-width: 0; }
+.dashboard-grid .process-section { min-height: 680px; }
+.dashboard-grid .process-body { padding: 14px 18px 18px; }
+
+.p3-skel {
+  display: grid;
+  gap: 10px;
+  padding: 6px 4px 0;
+}
+.p3-skel-row {
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(90deg, rgba(23,63,120,.06), rgba(23,63,120,.10), rgba(23,63,120,.06));
+  background-size: 200% 100%;
+  animation: p3-skel 1.2s ease-in-out infinite;
+}
+@keyframes p3-skel {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 100% 50%; }
+}
 .g3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px; align-items: stretch; }
 .g4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 10px; }
 .g1 { margin-bottom: 10px; }
@@ -1224,7 +1297,7 @@ select:focus { box-shadow: 0 0 0 3px rgba(23,63,120,.15); }
 ══════════════════════════════════════════════════════════════════════════ */
 .map-news-grid {
   display: grid;
-  grid-template-columns: 1.25fr 1fr;
+  grid-template-columns: 1.6fr 1fr;
   gap: 10px;
   margin-bottom: 10px;
 }
@@ -1266,10 +1339,21 @@ select:focus { box-shadow: 0 0 0 3px rgba(23,63,120,.15); }
 
 /* ── Leaflet 지도 컨테이너 ────────────────────────────────────────────────── */
 .sg-leaflet-map {
-  height: 300px;
+  height: 520px;
   border-radius: 12px;
   overflow: hidden;
   flex: 1;
+}
+
+.news-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 520px;
+}
+#news-list {
+  flex: 1;
+  overflow: auto;
+  padding-right: 2px;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

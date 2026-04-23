@@ -353,7 +353,8 @@ async def _run_pipeline_for_product(product_key: str) -> None:
         await _emit({"phase": "pipeline", "message": f"{product_key} — DB 조회 중", "level": "info"})
 
         from utils.db import fetch_kup_products
-        kup_rows = await asyncio.to_thread(fetch_kup_products, "SG")
+        country = "MN" if product_key.startswith("MN_") else "SG"
+        kup_rows = await asyncio.to_thread(fetch_kup_products, country)
         db_row = next((r for r in kup_rows if r.get("product_id") == product_key), None)
 
         if db_row is None:

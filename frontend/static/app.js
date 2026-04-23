@@ -80,7 +80,7 @@ let _p2ColData = {
  */
 function goTab(id, el) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('on'));
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('on'));
+  document.querySelectorAll('.tab, .topbar-tab').forEach(t => t.classList.remove('on'));
   const page = document.getElementById(id);
   if (page) page.classList.add('on');
   if (el)   el.classList.add('on');
@@ -106,17 +106,32 @@ function toggleProcess(id) {
 
 async function loadMacro() {
   try {
-    const res  = await fetch('/api/uy/macro');
-    const data = await res.json();
-    _setMacro('macro-gdp',    `$${(data.gdp_per_capita_usd || 20045).toLocaleString()}`, 'macro-gdp-src',    data.source?.gdp    || 'IMF WEO 2024');
-    _setMacro('macro-pop',    `${data.population_m || 3.6}M명`,                          'macro-pop-src',    data.source?.population || 'UN WPP 2024');
-    _setMacro('macro-pharma', `$${data.pharma_market_usd_m || 850}M`,                   'macro-pharma-src', data.source?.pharma_market || 'IQVIA 2024');
-    _setMacro('macro-growth', `${data.real_growth_pct || 3.2}%`,                        'macro-growth-src', data.source?.growth || 'IMF 2024');
+    const res  = await fetch('/api/macro');
+    const cards = await res.json();
+    if (!Array.isArray(cards)) throw new Error('invalid macro payload');
+
+    const byLabel = {};
+    for (const c of cards) {
+      if (!c || typeof c !== 'object') continue;
+      const key = String(c.label || '').trim();
+      if (!key) continue;
+      byLabel[key] = c;
+    }
+
+    const gdp = byLabel['1인당 GDP'] || byLabel['국가 GDP'] || null;
+    const pop = byLabel['인구'] || null;
+    const pharma = byLabel['의약품 시장'] || byLabel['의약품 시장 규모'] || null;
+    const growth = byLabel['실질 성장률'] || null;
+
+    _setMacro('macro-gdp', gdp ? String(gdp.value || '—') : '—', 'macro-gdp-src', gdp ? String(gdp.sub || '—') : '—');
+    _setMacro('macro-pop', pop ? String(pop.value || '—') : '—', 'macro-pop-src', pop ? String(pop.sub || '—') : '—');
+    _setMacro('macro-pharma', pharma ? String(pharma.value || '—') : '—', 'macro-pharma-src', pharma ? String(pharma.sub || '—') : '—');
+    _setMacro('macro-growth', growth ? String(growth.value || '—') : '—', 'macro-growth-src', growth ? String(growth.sub || '—') : '—');
   } catch (_) {
-    _setMacro('macro-gdp',    '$20,045', 'macro-gdp-src',    'IMF WEO 2024');
-    _setMacro('macro-pop',    '3.6M명',  'macro-pop-src',    'UN WPP 2024');
-    _setMacro('macro-pharma', '$850M',   'macro-pharma-src', 'IQVIA 2024');
-    _setMacro('macro-growth', '3.2%',    'macro-growth-src', 'IMF 2024');
+    _setMacro('macro-gdp',    '$4,200', 'macro-gdp-src',    '2024 · IMF WEO');
+    _setMacro('macro-pop',    '340만 명',  'macro-pop-src',    '2024 · UN WPP');
+    _setMacro('macro-pharma', '$1.5억',   'macro-pharma-src', '2024 · 추정');
+    _setMacro('macro-growth', '5.0%',    'macro-growth-src', '2024 · IMF');
   }
 }
 
@@ -337,8 +352,23 @@ function _loadReports() {
 function _addReportEntry(result, pdfName) {
   const reports = _loadReports();
   const productName = result ? (result.trade_name || result.product_id || '알 수 없음') : '알 수 없음';
+  const productId = result ? String(result.product_id || '') : '';
+
+  // PDF가 없는 결과는 "저장된 보고서" 목록에 넣지 않음
+  if (!pdfName) {
+    return;
+  }
+
+  // 동일 PDF가 이미 저장되어 있으면 중복 저장 방지
+  const pdfKey = String(pdfName || '').trim();
+  if (pdfKey && reports.some(r => String(r.pdf_name || '') === pdfKey)) {
+    _syncP2ReportsOptions();
+    return;
+  }
+
   const entry   = {
     id:        Date.now(),
+    product_id: productId,
     product:   productName,
     stage_label: '시장조사',
     report_title: `시장조사 보고서 - ${productName}`,
@@ -422,6 +452,20 @@ function renderReportTab() {
   _syncP2ReportsOptions();
 }
 
+// P3에서 보고서 선택 UI가 있을 때 옵션 동기화 (P3 파이프라인은 product-select를 참조하므로 최소 연결만 제공)
+function _syncP3ReportsOptions() {
+  const sel = document.getElementById('p3-report-select');
+  if (!sel) return;
+  const reports = _loadReports().filter(r => String(r.pdf_name || '').trim());
+  const optionHtml = ['<option value="">시장조사 보고서를 선택하세요.</option>']
+    .concat(reports.map((r) => {
+      const label = `시장조사 보고서 · ${String(r.product || '').trim() || '제품'} · ${String(r.timestamp || '').trim() || ''}`.trim();
+      return `<option value="${r.id}">${_escHtml(label)}</option>`;
+    }))
+    .join('');
+  sel.innerHTML = optionHtml;
+}
+
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    §6. 수출 가격 전략 (P2)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
@@ -464,6 +508,10 @@ function initP2Strategy() {
   if (aiSelect) {
     aiSelect.addEventListener('change', (e) => {
       _p2AiSelectedReportId = e.target.value || '';
+      const rep = _loadReports().find(r => String(r.id) === String(_p2AiSelectedReportId)) || null;
+      const pid = rep && rep.product_id ? String(rep.product_id) : '';
+      const pSel = document.getElementById('product-select');
+      if (pSel && pid) pSel.value = pid;
     });
   }
 
@@ -612,8 +660,10 @@ function runP2ManualCalculation() {
 async function runP2AiPipeline() {
   const runBtn = document.getElementById('btn-p2-ai-run');
   const runIcon = document.getElementById('p2-ai-run-icon');
-  const selectedReport = _loadReports().find((r) => String(r.id) === String(_p2AiSelectedReportId));
-  const reportFilename = _p2UploadedReportFilename || (selectedReport ? (selectedReport.pdf_name || '') : '');
+  const selectedId = String(document.getElementById('p2-ai-report-select')?.value || _p2AiSelectedReportId || '').trim();
+  _p2AiSelectedReportId = selectedId;
+  const selectedReport = _loadReports().find((r) => String(r.id) === String(selectedId));
+  const reportFilename = _p2UploadedReportFilename || (selectedReport ? String(selectedReport.pdf_name || '').trim() : '');
 
   if (!reportFilename) {
     _showP2AiError('실행 전 PDF가 있는 보고서를 선택하거나 PDF를 직접 업로드해 주세요.');
@@ -947,9 +997,12 @@ function _p2FillBaseFromReport() {
 
 function _syncP2ReportsOptions() {
   if (!_p2Ready) return;
-  const reports = _loadReports();
-  const optionHtml = ['<option value="">보고서를 선택하세요</option>']
-    .concat(reports.map((r) => `<option value="${r.id}">${_escHtml(r.report_title || r.product || '보고서')}</option>`))
+  const reports = _loadReports().filter(r => String(r.pdf_name || '').trim());
+  const optionHtml = ['<option value="">저장된 분석 보고서를 선택하세요.</option>']
+    .concat(reports.map((r) => {
+      const label = `시장조사 보고서 · ${String(r.product || '').trim() || '제품'} · ${String(r.timestamp || '').trim() || ''}`.trim();
+      return `<option value="${r.id}">${_escHtml(label)}</option>`;
+    }))
     .join('');
 
   const manualSelect = document.getElementById('p2-report-select');
@@ -968,6 +1021,23 @@ function _syncP2ReportsOptions() {
     aiSelect.value = _p2AiSelectedReportId;
   }
 
+  _syncP3ReportsOptions();
+}
+
+function _getSelectedReportFromSelect(selectId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return null;
+  const rid = String(sel.value || '').trim();
+  if (!rid) return null;
+  return _loadReports().find(r => String(r.id) === rid) || null;
+}
+
+function _getSelectedReportFromSelect(selectId) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return null;
+  const rid = String(sel.value || '').trim();
+  if (!rid) return null;
+  return _loadReports().find(r => String(r.id) === rid) || null;
 }
 
 function _getP2SelectedReport() {
@@ -1309,6 +1379,7 @@ function resetProgress() {
  * U6: 재분석 버튼도 이 함수를 호출.
  */
 async function runPipeline() {
+  if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
   const productKey = document.getElementById('product-select').value;
   _currentKey      = productKey;
 
@@ -1371,6 +1442,7 @@ async function pollPipeline(productKey) {
 
     if (d.status === 'done') {
       clearInterval(_pollTimer);
+      _pollTimer = null;
       for (const s of STEP_ORDER) setProgress(s, 'done');
       const r2   = await fetch(`/api/pipeline/${encodeURIComponent(productKey)}/result`);
       const data = await r2.json();
@@ -1380,6 +1452,7 @@ async function pollPipeline(productKey) {
 
     if (d.status === 'error') {
       clearInterval(_pollTimer);
+      _pollTimer = null;
       setProgress(STEP_ORDER.includes(d.step) ? d.step : 'analyze', 'error');
       _resetBtn();
     }
@@ -1760,7 +1833,7 @@ async function loadNews() {
   listEl.innerHTML = '<div class="irow" style="color:var(--muted);font-size:12px;text-align:center;padding:20px 0;">뉴스 로드 중…</div>';
 
   try {
-    const res  = await fetch('/api/uy/news');
+    const res  = await fetch('/api/mn/news');
     const data = await res.json();
 
     if (!data.ok || !data.items?.length) {
@@ -1838,15 +1911,24 @@ async function runP3Pipeline() {
   const btn     = document.getElementById('btn-p3-run');
   const icon    = document.getElementById('p3-run-icon');
   const errEl   = document.getElementById('p3-error-msg');
-  const product = document.getElementById('product-select')?.value || 'SG_sereterol_activair';
+  const fromReport = _getSelectedReportFromSelect('p3-report-select');
+  const productFromReport = fromReport && fromReport.product_id ? String(fromReport.product_id) : '';
+  const product = productFromReport || document.getElementById('product-select')?.value || 'SG_sereterol_activair';
+  const skelEl  = document.getElementById('p3-skel');
+  const resultSection = document.getElementById('p3-result-section');
 
   if (btn) btn.disabled = true;
   if (icon) icon.textContent = '…';
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+  if (resultSection) resultSection.style.display = 'none';
+  if (skelEl) skelEl.style.display = '';
   _resetP3Progress();
   _setP3Progress('crawl', 'running');
 
   try {
+    const pSel = document.getElementById('product-select');
+    if (pSel && productFromReport) pSel.value = productFromReport;
+
     const checked = [...document.querySelectorAll('.p3-cb:checked')].map(cb => cb.value);
     const res = await fetch('/api/buyers/run', {
       method: 'POST',
@@ -1864,6 +1946,7 @@ async function runP3Pipeline() {
     if (errEl) { errEl.style.display = ''; errEl.textContent = `오류: ${e.message}`; }
     if (btn) btn.disabled = false;
     if (icon) icon.textContent = '▶';
+    if (skelEl) skelEl.style.display = 'none';
     _resetP3Progress();
   }
 }
@@ -1892,6 +1975,8 @@ async function _pollP3() {
       _p3PdfName = result.pdf || null;
       _renderP3Cards(_p3Buyers);
       document.getElementById('p3-result-section').style.display = '';
+      const skelEl = document.getElementById('p3-skel');
+      if (skelEl) skelEl.style.display = 'none';
       const dlBtn = document.getElementById('p3-dl-btn');
       if (dlBtn && _p3PdfName) dlBtn.disabled = false;
 
@@ -1903,6 +1988,8 @@ async function _pollP3() {
     } else if (data.status === 'error') {
       clearInterval(_p3PollTimer);
       _p3PollTimer = null;
+      const skelEl = document.getElementById('p3-skel');
+      if (skelEl) skelEl.style.display = 'none';
       const errEl = document.getElementById('p3-error-msg');
       if (errEl) { errEl.style.display = ''; errEl.textContent = `오류: ${data.step_label || '파이프라인 실패'}`; }
       if (data.step && P3_STEP_MAP[data.step]) _setP3Progress(P3_STEP_MAP[data.step], 'error');
@@ -2159,7 +2246,7 @@ async function loadAhpPartners() {
 (function initMnMap() {
   const el = document.getElementById('mn-map');
   if (!el || typeof L === 'undefined') return;
-  const map = L.map('mn-map', { zoomControl: true, scrollWheelZoom: false });
+  const map = L.map('mn-map', { zoomControl: true, scrollWheelZoom: true });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap',
     maxZoom: 10,
@@ -2167,24 +2254,26 @@ async function loadAhpPartners() {
   map.setView([47.8864, 106.9057], 5);
   L.marker([47.8864, 106.9057])
     .addTo(map)
-    .bindPopup('<b>울란바토르</b><br>몽골 수도 · 주요 의약품 유통 허브')
+    .bindPopup('<b>Ulaanbaatar</b><br>몽골 수도')
     .openPopup();
+  setTimeout(() => { map.invalidateSize(); }, 120);
 })();
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
    §14. 초기화
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
-loadKeyStatus();        // API 키 배지
-loadExchange();         // 환율 즉시 로드
+// 초기화: 화면에 존재하는 기능만 자동 활성화
+loadKeyStatus();        // API 키 배지 (존재하는 경우만)
+loadExchange();         // 환율 (존재하는 경우만)
 setInterval(() => { loadExchange(); }, 10000);
-loadMacro();            // 몽골 거시 지표 로드
-renderReportTab();      // 보고서 탭 초기 렌더
-initP2Strategy();       // 수출 가격 전략 초기화
+loadMacro();            // 거시 지표
+loadNews();             // 뉴스
+renderReportTab();      // 보고서 탭 (존재하는 경우만)
+initP2Strategy();       // 수출 가격 전략 (존재하는 경우만)
 
 (function () {
   const p1Select = document.getElementById('product-select');
   if (p1Select) p1Select.addEventListener('change', _syncP3ProductLabel);
   _syncP3ProductLabel();
 })();
-loadNews();             // 몽골 시장 뉴스 즉시 로드
