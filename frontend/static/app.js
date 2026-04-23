@@ -354,13 +354,12 @@ function _addReportEntry(result, pdfName) {
   const productName = result ? (result.trade_name || result.product_id || '알 수 없음') : '알 수 없음';
   const productId = result ? String(result.product_id || '') : '';
 
-  // PDF가 없는 결과는 "저장된 보고서" 목록에 넣지 않음
-  if (!pdfName) {
+  if (!result) {
     return;
   }
 
-  // 동일 PDF가 이미 저장되어 있으면 중복 저장 방지
   const pdfKey = String(pdfName || '').trim();
+  // 동일 PDF 파일명이 이미 있으면 중복 저장 방지 (PDF가 있을 때만)
   if (pdfKey && reports.some(r => String(r.pdf_name || '') === pdfKey)) {
     _syncP2ReportsOptions();
     return;
@@ -382,8 +381,8 @@ function _addReportEntry(result, pdfName) {
       month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit',
     }),
-    hasPdf: !!pdfName,
-    pdf_name: pdfName || '',
+    hasPdf: !!pdfKey,
+    pdf_name: pdfKey,
   };
 
   reports.unshift(entry);
@@ -456,10 +455,14 @@ function renderReportTab() {
 function _syncP3ReportsOptions() {
   const sel = document.getElementById('p3-report-select');
   if (!sel) return;
-  const reports = _loadReports().filter(r => String(r.pdf_name || '').trim());
+  const reports = _loadReports().filter((r) => r && (String(r.product || '').trim() || String(r.product_id || '').trim()));
   const optionHtml = ['<option value="">시장조사 보고서를 선택하세요.</option>']
     .concat(reports.map((r) => {
-      const label = `시장조사 보고서 · ${String(r.product || '').trim() || '제품'} · ${String(r.timestamp || '').trim() || ''}`.trim();
+      const base = String(r.product || '').trim() || '제품';
+      const tail = String(r.timestamp || '').trim() || '';
+      const pdfOk = String(r.pdf_name || '').trim();
+      const tag = pdfOk ? '' : ' · PDF 없음';
+      const label = `시장조사 보고서 · ${base}${tag}${tail ? ` · ${tail}` : ''}`.trim();
       return `<option value="${r.id}">${_escHtml(label)}</option>`;
     }))
     .join('');
@@ -997,10 +1000,14 @@ function _p2FillBaseFromReport() {
 
 function _syncP2ReportsOptions() {
   if (!_p2Ready) return;
-  const reports = _loadReports().filter(r => String(r.pdf_name || '').trim());
+  const reports = _loadReports().filter((r) => r && (String(r.product || '').trim() || String(r.product_id || '').trim()));
   const optionHtml = ['<option value="">저장된 분석 보고서를 선택하세요.</option>']
     .concat(reports.map((r) => {
-      const label = `시장조사 보고서 · ${String(r.product || '').trim() || '제품'} · ${String(r.timestamp || '').trim() || ''}`.trim();
+      const base = String(r.product || '').trim() || '제품';
+      const tail = String(r.timestamp || '').trim() || '';
+      const pdfOk = String(r.pdf_name || '').trim();
+      const tag = pdfOk ? '' : ' · PDF 없음';
+      const label = `시장조사 보고서 · ${base}${tag}${tail ? ` · ${tail}` : ''}`.trim();
       return `<option value="${r.id}">${_escHtml(label)}</option>`;
     }))
     .join('');
@@ -1022,14 +1029,6 @@ function _syncP2ReportsOptions() {
   }
 
   _syncP3ReportsOptions();
-}
-
-function _getSelectedReportFromSelect(selectId) {
-  const sel = document.getElementById(selectId);
-  if (!sel) return null;
-  const rid = String(sel.value || '').trim();
-  if (!rid) return null;
-  return _loadReports().find(r => String(r.id) === rid) || null;
 }
 
 function _getSelectedReportFromSelect(selectId) {
@@ -1687,7 +1686,7 @@ function renderResult(result, refs, pdfName) {
   }
 
   /* ─ U4: PDF 보고서 카드 ─ */
-  // N4: 보고서 탭에 자동 등록 (PDF 성공 여부 무관)
+  // N4: 보고서 탭·P2/P3 드롭다운에 등록 (PDF 없어도 분석 결과는 목록에 표시)
   _addReportEntry(result, pdfName);
   if (pdfName) {
     _showReportOk(pdfName);
@@ -2269,8 +2268,8 @@ loadExchange();         // 환율 (존재하는 경우만)
 setInterval(() => { loadExchange(); }, 10000);
 loadMacro();            // 거시 지표
 loadNews();             // 뉴스
-renderReportTab();      // 보고서 탭 (존재하는 경우만)
-initP2Strategy();       // 수출 가격 전략 (존재하는 경우만)
+initP2Strategy();       // P2 드롭다운 _p2Ready 설정 — renderReportTab보다 먼저
+renderReportTab();      // 보고서 탭 + 드롭다운 동기화
 
 (function () {
   const p1Select = document.getElementById('product-select');
