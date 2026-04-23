@@ -106,16 +106,17 @@ BROWSERLESS_API_KEY=
 
 ### Render 배포 (권장: Blueprint)
 
-1. 이 저장소를 GitHub에 push 합니다.
-2. Render 대시보드에서 **New + → Blueprint** 를 선택하고 저장소를 연결합니다.
-3. 루트의 `render.yaml`을 자동 인식하면 서비스가 생성됩니다.
-4. Render 환경변수에 아래 키를 입력합니다 (`sync: false` 항목):
+1. 이 저장소를 GitHub에 push 합니다. (현재 로컬에 `origin` / `origin2` 등 여러 원격이 있으면, Render에 연결할 **하나의 GitHub 저장소**만 정한 뒤 `git push` 대상을 맞추세요.)
+2. [Render 대시보드](https://dashboard.render.com) → 우측 상단 **Account** → **Settings** → **GitHub** 에서 **Connect** 로 Render GitHub 앱을 설치하고, 배포할 저장소에 대한 접근을 허용합니다.
+3. Render에서 **New + → Blueprint** 를 선택하고, 방금 허용한 GitHub 저장소를 고릅니다.
+4. 루트의 `render.yaml`을 자동 인식하면 서비스가 생성됩니다.
+5. Render 환경변수에 아래 키를 입력합니다 (`sync: false` 항목). 키 이름은 루트의 `.env.example` 과 동일합니다.
    - `SUPABASE_URL`
    - `SUPABASE_KEY`
    - `ANTHROPIC_API_KEY` (또는 `CLAUDE_API_KEY`)
    - `PERPLEXITY_API_KEY`
-5. 배포 완료 후 헬스체크 경로 `GET /api/health` 가 `{"ok": true, ...}`를 반환하면 정상입니다.
-6. 배포 전 로컬 점검:
+6. 배포 완료 후 헬스체크 경로 `GET /api/health` 가 `{"ok": true, ...}`를 반환하면 정상입니다.
+7. 배포 전 로컬 점검:
 
 ```bash
 python scripts/render_preflight.py

@@ -1,0 +1,30 @@
+# Render 배포용 저장소: push 시 의존성 설치·앱 로드·경량 테스트
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Render preflight (no secrets required)
+        run: python scripts/render_preflight.py
+
+      - name: Import FastAPI app (Render startCommand 동일 진입점)
+        run: python -c "from frontend.server import app; assert app.title"
+
+      - name: Unit tests (네트워크·Supabase 불필요)
+        run: python -m unittest tests.test_pbs_pricing -v
