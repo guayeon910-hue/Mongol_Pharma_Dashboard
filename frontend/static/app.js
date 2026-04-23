@@ -26,7 +26,7 @@
  *   U4  PDF 카드 3가지 상태
  *   U6  재분석 버튼
  *   N1  탭 전환 (AU 프론트 기반)
- *   N2  환율 카드 (yfinance MNT/KRW)
+ *   N2  환율 카드 (yfinance SGD/KRW)
  *   N3  To-Do 리스트 (localStorage)
  *   N4  보고서 탭 자동 등록
  * ═══════════════════════════════════════════════════════════════
@@ -50,6 +50,23 @@ const INN_MAP = {
   SG_gastiin_cr_mosapride:     'Mosapride CR',
 };
 
+const LEGACY_PRODUCT_KEY_MAP = {
+  MN_ciloduo_cilosta_rosuva: 'SG_ciloduo_cilosta_rosuva',
+  MN_rosumeg_combigel: 'SG_rosumeg_combigel',
+  MN_atmeg_combigel: 'SG_atmeg_combigel',
+  MN_gastiin_cr_mosapride: 'SG_gastiin_cr_mosapride',
+  MN_omethyl_omega3_2g: 'SG_omethyl_omega3_2g',
+  MN_hydrine_hydroxyurea: 'SG_hydrine_hydroxyurea_500',
+  MN_hydrine_hydroxyurea_500: 'SG_hydrine_hydroxyurea_500',
+  MN_sereterol_activair: 'SG_sereterol_activair',
+  MN_gadvoa_gadobutrol: 'SG_gadvoa_gadobutrol_604',
+  MN_gadvoa_gadobutrol_604: 'SG_gadvoa_gadobutrol_604',
+};
+
+function normalizeProductKey(productKey) {
+  return LEGACY_PRODUCT_KEY_MAP[productKey] || productKey || 'SG_sereterol_activair';
+}
+
 /**
  * B2: 서버 step 이름 → 프론트 progress 단계 ID 매핑
  * 서버 step: init → db_load → analyze → refs → report → done
@@ -60,7 +77,7 @@ let _pollTimer  = null;   // 파이프라인 폴링 타이머
 let _currentKey = null;   // 현재 선택된 product_key
 
 // P2 3열 시나리오용 원본 데이터
-let _p2ScenarioRaw = { agg: 0, avg: 0, cons: 0, mnt_usd: 0, mnt_krw: 0 };
+let _p2ScenarioRaw = { agg: 0, avg: 0, cons: 0, local_usd: 0, local_krw: 0 };
 
 // P2 컬럼별 커스텀 옵션 데이터
 let _p2ColData = {
@@ -121,17 +138,17 @@ async function loadMacro() {
     const gdp = byLabel['일인당 GDP'] || byLabel['1인당 GDP'] || byLabel['국가 GDP'] || null;
     const pop = byLabel['인구'] || null;
     const pharma = byLabel['의약품 시장'] || byLabel['의약품 시장 규모'] || null;
-    const growth = byLabel['실질 성장률'] || null;
+    const importDependency = byLabel['의약품 국가 수입 의존도'] || byLabel['수입 의존도'] || null;
 
     _setMacro('macro-gdp', gdp ? String(gdp.value || '—') : '—', 'macro-gdp-src', gdp ? String(gdp.sub || '—') : '—');
     _setMacro('macro-pop', pop ? String(pop.value || '—') : '—', 'macro-pop-src', pop ? String(pop.sub || '—') : '—');
     _setMacro('macro-pharma', pharma ? String(pharma.value || '—') : '—', 'macro-pharma-src', pharma ? String(pharma.sub || '—') : '—');
-    _setMacro('macro-growth', growth ? String(growth.value || '—') : '—', 'macro-growth-src', growth ? String(growth.sub || '—') : '—');
+    _setMacro('macro-growth', importDependency ? String(importDependency.value || '—') : '—', 'macro-growth-src', importDependency ? String(importDependency.sub || '—') : '—');
   } catch (_) {
-    _setMacro('macro-gdp',    '$4,200', 'macro-gdp-src',    '2024 · IMF WEO');
-    _setMacro('macro-pop',    '340만 명',  'macro-pop-src',    '2024 · UN WPP');
-    _setMacro('macro-pharma', '$1.5억',   'macro-pharma-src', '2024 · 추정');
-    _setMacro('macro-growth', '5.0%',    'macro-growth-src', '2024 · IMF');
+    _setMacro('macro-gdp',    'US$ 88,447',  'macro-gdp-src',    'IMF');
+    _setMacro('macro-pop',    '5,917,600명', 'macro-pop-src',    'Singstat');
+    _setMacro('macro-pharma', '$4.8B',       'macro-pharma-src', 'IQVIA');
+    _setMacro('macro-growth', '~85%',        'macro-growth-src', 'HSA');
   }
 }
 
@@ -161,31 +178,31 @@ async function loadExchange() {
       if (typeof _renderP2Manual === 'function') _renderP2Manual();
     }
 
-    // 메인 숫자 (KRW/MNT)
+    // 메인 숫자 (KRW/SGD)
     const rateEl = document.getElementById('exchange-main-rate');
     if (rateEl) {
-      const fmt = Number(data.mnt_krw).toLocaleString('ko-KR', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
+      const fmt = Number(data.sgd_krw).toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       rateEl.innerHTML = `${fmt}<span style="font-size:14px;margin-left:4px;color:var(--muted);font-weight:700;">원</span>`;
     }
 
-    // 서브 그리드 (USD/KRW + MNT 연관 환율)
+    // 서브 그리드 (USD/KRW + SGD 연관 환율)
     const subEl = document.getElementById('exchange-sub');
     if (subEl) {
       const fmtUsd = data.usd_krw.toLocaleString('ko-KR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const fmtMntUsd = Number(data.mnt_usd).toFixed(6);
-      const fmtUsdMnt = Number(data.usd_mnt).toFixed(2);
+      const fmtSgdUsd = Number(data.sgd_usd).toFixed(4);
+      const fmtUsdSgd = Number(data.usd_sgd).toFixed(4);
       subEl.innerHTML = `
         <div class="irow" style="margin:0">
           <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">USD / KRW</div>
           <div style="font-size:15px;font-weight:900;color:var(--navy);">${fmtUsd}원</div>
         </div>
         <div class="irow" style="margin:0">
-          <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">MNT / USD</div>
-          <div style="font-size:15px;font-weight:900;color:var(--navy);">${fmtMntUsd}</div>
+          <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">SGD / USD</div>
+          <div style="font-size:15px;font-weight:900;color:var(--navy);">${fmtSgdUsd}</div>
         </div>
         <div class="irow" style="margin:0">
-          <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">USD / MNT</div>
-          <div style="font-size:15px;font-weight:900;color:var(--navy);">${fmtUsdMnt}</div>
+          <div style="font-size:10.5px;color:var(--muted);margin-bottom:3px;">USD / SGD</div>
+          <div style="font-size:15px;font-weight:900;color:var(--navy);">${fmtUsdSgd}</div>
         </div>
       `;
     }
@@ -488,14 +505,14 @@ let _p2ManualCalculated = false;
 function _makeP2Defaults() {
   return {
     public: [
-      { key: 'base_price', label: '기준 입찰가', value: 0, type: 'abs_input', unit: 'MNT', step: 100, min: 0, max: 99999999, enabled: true, fixed: false, expanded: false, hint: '경쟁사 입찰가 또는 목표 기준가 (MNT)', rationale: '공공 채널은 입찰 경쟁이 강해 기준가 설정이 핵심입니다.' },
-      { key: 'exchange', label: '환율 (USD→MNT)', value: 3450.0, type: 'abs_input', unit: 'rate', step: 1, min: 1, max: 99999, enabled: true, fixed: false, expanded: false, hint: 'USD→MNT 환율 (기본 3450)', rationale: '실시간 환율을 반영해 환차 리스크를 줄입니다.' },
+      { key: 'base_price', label: '기준 입찰가', value: 0, type: 'abs_input', unit: 'SGD', step: 0.1, min: 0, max: 99999999, enabled: true, fixed: false, expanded: false, hint: '경쟁사 입찰가 또는 목표 기준가 (SGD)', rationale: '공공 채널은 입찰 경쟁이 강해 기준가 설정이 핵심입니다.' },
+      { key: 'exchange', label: '환율 (USD→SGD)', value: 1.0, type: 'abs_input', unit: 'rate', step: 0.0001, min: 0, max: 99999, enabled: true, fixed: false, expanded: false, hint: 'USD→SGD 환율 보정값', rationale: '필요할 때만 환차 보정값으로 사용합니다.' },
       { key: 'pub_ratio', label: '공공 수출가 산출 비율', value: 30, type: 'pct_mult', unit: '%', step: 1, min: 0, max: 99999, enabled: true, fixed: false, expanded: false, hint: '기준가 대비 최종 반영 비율', rationale: '입찰·유통·파트너 마진을 반영한 목표 비율입니다.' },
     ],
     private: [
-      { key: 'base_het', label: '민간 기준가', value: 0, type: 'abs_input', unit: 'MNT', step: 100, min: 0, max: 99999999, enabled: true, fixed: false, expanded: false, hint: '소매/입고 기준 가격 (MNT)', rationale: '민간 시장은 소매 가격 구조 역산이 중요합니다.' },
-      { key: 'exchange', label: '환율 (USD→MNT)', value: 3450.0, type: 'abs_input', unit: 'rate', step: 1, min: 1, max: 99999, enabled: true, fixed: false, expanded: false, hint: 'USD→MNT 환율 (기본 3450)', rationale: '실시간 환율 반영으로 가격 정합성을 유지합니다.' },
-      { key: 'vat', label: 'VAT 공제 (÷1.10)', value: 10, type: 'gst_fixed', unit: '%', step: 0, min: 10, max: 10, enabled: true, fixed: true, expanded: false, hint: '몽골 VAT 10% 고정', rationale: '민간 소비자 가격에서 세금을 분리합니다.' },
+      { key: 'base_het', label: '민간 기준가', value: 0, type: 'abs_input', unit: 'SGD', step: 0.1, min: 0, max: 99999999, enabled: true, fixed: false, expanded: false, hint: '소매/입고 기준 가격 (SGD)', rationale: '민간 시장은 소매 가격 구조 역산이 중요합니다.' },
+      { key: 'exchange', label: '환율 (USD→SGD)', value: 1.0, type: 'abs_input', unit: 'rate', step: 0.0001, min: 0, max: 99999, enabled: true, fixed: false, expanded: false, hint: 'USD→SGD 환율 보정값', rationale: '필요할 때만 환차 보정값으로 사용합니다.' },
+      { key: 'vat', label: 'GST 공제 (÷1.09)', value: 9, type: 'gst_fixed', unit: '%', step: 0, min: 9, max: 9, enabled: true, fixed: true, expanded: false, hint: '싱가포르 GST 9% 고정', rationale: '민간 소비자 가격에서 세금을 분리합니다.' },
       { key: 'retail', label: '소매 마진율', value: 40, type: 'pct_deduct', unit: '%', step: 1, min: 0, max: 99999, enabled: true, fixed: false, expanded: false, hint: '체인/약국 마진 차감', rationale: '채널별 마진 차이를 반영합니다.' },
       { key: 'partner', label: '파트너사 마진', value: 20, type: 'pct_deduct', unit: '%', step: 1, min: 0, max: 99999, enabled: true, fixed: false, expanded: false, hint: '현지 파트너 수수료', rationale: '현지 영업·등록 비용을 포함합니다.' },
       { key: 'distribution', label: '유통 마진', value: 15, type: 'pct_deduct', unit: '%', step: 1, min: 0, max: 99999, enabled: true, fixed: false, expanded: false, hint: '물류/도매 비용', rationale: '유통 구조별 고정비를 반영합니다.' },
@@ -512,7 +529,7 @@ function initP2Strategy() {
     aiSelect.addEventListener('change', (e) => {
       _p2AiSelectedReportId = e.target.value || '';
       const rep = _loadReports().find(r => String(r.id) === String(_p2AiSelectedReportId)) || null;
-      const pid = rep && rep.product_id ? String(rep.product_id) : '';
+      const pid = normalizeProductKey(rep && rep.product_id ? String(rep.product_id) : '');
       const pSel = document.getElementById('product-select');
       if (pSel && pid) pSel.value = pid;
     });
@@ -765,8 +782,8 @@ function recalcP2Col(col) {
   }
   price = Math.max(0, price);
 
-  const usd = _p2ScenarioRaw.mnt_usd > 0 ? (price * _p2ScenarioRaw.mnt_usd).toFixed(2) : '—';
-  const krw = _p2ScenarioRaw.mnt_krw > 0 ? Math.round(price * _p2ScenarioRaw.mnt_krw).toLocaleString('ko-KR') : '—';
+  const usd = _p2ScenarioRaw.local_usd > 0 ? (price * _p2ScenarioRaw.local_usd).toFixed(2) : '—';
+  const krw = _p2ScenarioRaw.local_krw > 0 ? Math.round(price * _p2ScenarioRaw.local_krw).toLocaleString('ko-KR') : '—';
 
   const priceEl = document.getElementById('p2c-price-' + col);
   const subEl   = document.getElementById('p2c-sub-' + col);
@@ -780,7 +797,7 @@ function renderP2ColOptions(col, showAddForm) {
   if (!container) return;
   const opts = (_p2ColData[col] || { opts: [] }).opts;
 
-  const typeLabel = { pct_add: '% 가산', pct_deduct: '% 차감', abs_add: 'MNT 가산' };
+  const typeLabel = { pct_add: '% 가산', pct_deduct: '% 차감', abs_add: 'SGD 가산' };
 
   let html = opts.map(opt => `
     <div class="p2c-opt-row">
@@ -798,7 +815,7 @@ function renderP2ColOptions(col, showAddForm) {
         <select class="p2c-opt-type-select" id="p2c-newtype-${col}">
           <option value="pct_deduct">% 차감</option>
           <option value="pct_add">% 가산</option>
-          <option value="abs_add">MNT 가산</option>
+          <option value="abs_add">SGD 가산</option>
         </select>
         <input class="p2c-opt-val" type="number" placeholder="값" id="p2c-newval-${col}" step="0.1" min="0">
         <button class="p2c-confirm-btn" onclick="confirmP2ColOption('${col}')">✓</button>
@@ -862,18 +879,18 @@ function _renderP2AiResult(data) {
 
   // 참조 정보
   _setText('p2r-ref-price-text',
-    extracted.ref_price_text || (extracted.ref_price_mnt != null ? `MNT ${Number(extracted.ref_price_mnt).toLocaleString()}` : '추출값 없음'));
-  const krwRate = rates.mnt_krw;
-  const usdRate = rates.mnt_usd;
+    extracted.ref_price_text || (extracted.ref_price_sgd != null ? `SGD ${Number(extracted.ref_price_sgd).toFixed(2)}` : '추출값 없음'));
+  const krwRate = rates.sgd_krw;
+  const usdRate = rates.sgd_usd;
   let rateText = '환율 정보 없음';
   if (krwRate) {
-    rateText = `1 MNT = ${Number(krwRate).toFixed(4)} KRW`;
-    if (usdRate) rateText += ` / ${Number(usdRate).toFixed(6)} USD`;
+    rateText = `1 SGD = ${Number(krwRate).toFixed(2)} KRW`;
+    if (usdRate) rateText += ` / ${Number(usdRate).toFixed(4)} USD`;
   }
   _setText('p2r-exchange', rateText);
 
   // 최종 권고가
-  _setText('p2r-final-price', `MNT ${Number(analysis.final_price_mnt || analysis.final_price_sgd || 0).toLocaleString()}`);
+  _setText('p2r-final-price', `SGD ${Number(analysis.final_price_sgd || analysis.final_price_mnt || 0).toFixed(2)}`);
 
   // 시나리오
   const scenEl = document.getElementById('p2r-scenarios');
@@ -885,7 +902,7 @@ function _renderP2AiResult(data) {
           <div class="p2-scenario p2-scenario--${cls}">
             <div class="p2-scenario-top">
               <span class="p2-scenario-name">${_escHtml(String(s.name || `시나리오 ${idx + 1}`))}</span>
-              <span class="p2-scenario-price">MNT ${Number(s.price_mnt || s.price_sgd || 0).toLocaleString()}</span>
+              <span class="p2-scenario-price">SGD ${Number(s.price_sgd || s.price_mnt || 0).toFixed(2)}</span>
             </div>
           </div>`;
       }).join('');
@@ -911,22 +928,22 @@ function _renderP2AiResult(data) {
   }
 
   // ── 3열 시나리오 UI 채우기 ──────────────────────────────
-  const mntUsd = rates.mnt_usd ? Number(rates.mnt_usd) : 0;
-  const mntKrw = rates.mnt_krw ? Number(rates.mnt_krw) : 0;
+  const sgdUsd = rates.sgd_usd ? Number(rates.sgd_usd) : 0;
+  const sgdKrw = rates.sgd_krw ? Number(rates.sgd_krw) : 0;
 
   const cols = ['agg', 'avg', 'cons'];
   scenarios.forEach((s, i) => {
     const col     = cols[i];
     if (!col) return;
-    const priceMnt = Number(s.price_mnt || s.price_sgd || 0);
-    _p2ScenarioRaw[col]     = priceMnt;
-    _p2ScenarioRaw.mnt_usd  = mntUsd;
-    _p2ScenarioRaw.mnt_krw  = mntKrw;
+    const priceSgd = Number(s.price_sgd || s.price_mnt || 0);
+    _p2ScenarioRaw[col]      = priceSgd;
+    _p2ScenarioRaw.local_usd = sgdUsd;
+    _p2ScenarioRaw.local_krw = sgdKrw;
 
-    const refBase = extracted.ref_price_mnt != null ? Number(extracted.ref_price_mnt) : 0;
+    const refBase = extracted.ref_price_sgd != null ? Number(extracted.ref_price_sgd) : 0;
     const refLabel = refBase > 0
-      ? `Retail base: MNT ${Math.round(refBase * (i === 0 ? 1.3 : i === 1 ? 1.0 : 0.7)).toLocaleString()}`
-      : `Retail base: — MNT`;
+      ? `Retail base: SGD ${(refBase * (i === 0 ? 1.3 : i === 1 ? 1.0 : 0.7)).toFixed(2)}`
+      : 'Retail base: — SGD';
 
     const priceEl = document.getElementById('p2c-price-' + col);
     const subEl   = document.getElementById('p2c-sub-' + col);
@@ -934,11 +951,11 @@ function _renderP2AiResult(data) {
     const baseInput = document.getElementById('p2ci-base-' + col);
 
     if (refEl)     refEl.textContent   = refLabel;
-    if (priceEl)   priceEl.textContent = Math.round(priceMnt).toLocaleString();
-    if (baseInput) baseInput.value     = Math.round(priceMnt);
+    if (priceEl)   priceEl.textContent = priceSgd.toFixed(2);
+    if (baseInput) baseInput.value     = priceSgd.toFixed(2);
     if (subEl) {
-      const usd = mntUsd > 0 ? (priceMnt * mntUsd).toFixed(2) : '—';
-      const krw = mntKrw > 0 ? Math.round(priceMnt * mntKrw).toLocaleString('ko-KR') : '—';
+      const usd = sgdUsd > 0 ? (priceSgd * sgdUsd).toFixed(2) : '—';
+      const krw = sgdKrw > 0 ? Math.round(priceSgd * sgdKrw).toLocaleString('ko-KR') : '—';
       subEl.textContent = `${usd} USD · ${krw} KRW`;
     }
     // Reset custom options for each column on new AI result
@@ -948,10 +965,10 @@ function _renderP2AiResult(data) {
 
   // 경쟁가 분포
   if (scenarios.length >= 3) {
-    const prices = scenarios.map(s => Number(s.price_mnt || s.price_sgd || 0)).sort((a, b) => a - b);
-    _setText('p2-dist-p25', `${Math.round(prices[0]).toLocaleString()} MNT`);
-    _setText('p2-dist-med', `${Math.round(prices[1]).toLocaleString()} MNT`);
-    _setText('p2-dist-p75', `${Math.round(prices[2]).toLocaleString()} MNT`);
+    const prices = scenarios.map(s => Number(s.price_sgd || s.price_mnt || 0)).sort((a, b) => a - b);
+    _setText('p2-dist-p25', `SGD ${prices[0].toFixed(2)}`);
+    _setText('p2-dist-med', `SGD ${prices[1].toFixed(2)}`);
+    _setText('p2-dist-p75', `SGD ${prices[2].toFixed(2)}`);
   }
 
   // 제품 목록 (추출된 product_name 기준)
@@ -974,22 +991,22 @@ function _renderP2AiResult(data) {
 function _p2FillExchangeRate() {
   const rates = window._exchangeRates;
   if (!rates) return;
-  const usdMnt = Number(rates.usd_mnt);
-  if (!usdMnt || usdMnt <= 0) return;
+  const usdSgd = Number(rates.usd_sgd);
+  if (!usdSgd || usdSgd <= 0) return;
   ['public', 'private'].forEach((seg) => {
     const opt = _p2Manual[seg].find((x) => x.key === 'exchange');
-    if (opt) opt.value = usdMnt;
+    if (opt) opt.value = usdSgd;
   });
 }
 
 function _p2FillBaseFromReport() {
   const report = _getP2SelectedReport();
   if (!report) return;
-  // 1순위: 저장된 숫자형 MNT 값
-  const numHint = report.pbs_mnt_hint || report.pbs_sgd_hint;
+  // 1순위: 저장된 숫자형 SGD 값
+  const numHint = report.pbs_sgd_hint || report.pbs_mnt_hint;
   const hint = (numHint != null && !Number.isNaN(Number(numHint)) && Number(numHint) > 0)
     ? Number(numHint)
-    : _extractMntHint(report.price_hint || '');
+    : _extractSgdHint(report.price_hint || '');
   if (!Number.isNaN(hint) && hint > 0) {
     const pub = _p2Manual.public.find((x) => x.key === 'base_price');
     const pri = _p2Manual.private.find((x) => x.key === 'base_het');
@@ -1044,16 +1061,14 @@ function _getP2SelectedReport() {
   return _loadReports().find((r) => String(r.id) === String(_p2SelectedReportId)) || null;
 }
 
-function _extractMntHint(text) {
+function _extractSgdHint(text) {
   const src = String(text || '');
-  const mRange = src.match(/MNT\s*([0-9,]+(?:\.[0-9]+)?)\s*[~\-–]\s*([0-9,]+(?:\.[0-9]+)?)/i);
+  const mRange = src.match(/SGD\s*([0-9,]+(?:\.[0-9]+)?)\s*[~\-–]\s*([0-9,]+(?:\.[0-9]+)?)/i);
   if (mRange) return (Number(mRange[1].replace(/,/g,'')) + Number(mRange[2].replace(/,/g,''))) / 2;
-  const mSingle = src.match(/MNT\s*([0-9,]+(?:\.[0-9]+)?)/i);
+  const mSingle = src.match(/(?:SGD|S\$)\s*([0-9,]+(?:\.[0-9]+)?)/i);
   if (mSingle) return Number(mSingle[1].replace(/,/g,''));
-  const mTog = src.match(/([0-9,]+(?:\.[0-9]+)?)\s*(?:₮|төгрөг)/i);
-  if (mTog) return Number(mTog[1].replace(/,/g,''));
-  const mUsd = src.match(/(?:\$|USD\s+)([0-9]+(?:\.[0-9]+)?)/i);
-  if (mUsd) return Number(mUsd[1]) * 3450;
+  const mUsd = src.match(/(?:US\$|USD\s+)([0-9]+(?:\.[0-9]+)?)/i);
+  if (mUsd) return Number(mUsd[1]) * 1.35;
   return NaN;
 }
 
@@ -1065,17 +1080,17 @@ function _calcP2Manual() {
     const ex = Number(options.find((x) => x.key === 'exchange')?.value || 1);
     const ratio = Number(options.find((x) => x.key === 'pub_ratio')?.value || 30);
     let price = base * ex * (ratio / 100);
-    const parts = [`MNT ${base.toLocaleString()}`, `× ${ex.toFixed(2)}`, `× ${ratio}%`];
+    const parts = [`SGD ${base.toFixed(2)}`, `× ${ex.toFixed(4)}`, `× ${ratio}%`];
     options.forEach((opt) => {
       if (opt.type === 'pct_add_custom') {
         price *= (1 + Number(opt.value) / 100);
         parts.push(`× (1+${Number(opt.value).toFixed(1)}%)`);
       } else if (opt.type === 'abs_add_custom') {
         price += Number(opt.value);
-        parts.push(`+ MNT ${Number(opt.value).toLocaleString()}`);
+        parts.push(`+ SGD ${Number(opt.value).toFixed(2)}`);
       }
     });
-    return { kup: Math.max(price, 0), formulaStr: `${parts.join('  ')}  =  KUP  MNT ${Math.round(Math.max(price, 0)).toLocaleString()}` };
+    return { kup: Math.max(price, 0), formulaStr: `${parts.join('  ')}  =  KUP  SGD ${Math.max(price, 0).toFixed(2)}` };
   }
 
   let price = 0;
@@ -1083,13 +1098,13 @@ function _calcP2Manual() {
   options.forEach((opt) => {
     if (opt.key === 'base_het') {
       price = Number(opt.value);
-      parts.push(`MNT ${Math.round(price).toLocaleString()}`);
+      parts.push(`SGD ${price.toFixed(2)}`);
     } else if (opt.key === 'exchange' && Number(opt.value) !== 1) {
       price *= Number(opt.value);
       parts.push(`× ${Number(opt.value).toFixed(2)}`);
     } else if (opt.type === 'gst_fixed') {
-      price /= 1.10;
-      parts.push('÷ 1.10');
+      price /= 1.09;
+      parts.push('÷ 1.09');
     } else if (opt.type === 'pct_deduct') {
       price *= (1 - Number(opt.value) / 100);
       parts.push(`× (1−${Number(opt.value).toFixed(1)}%)`);
@@ -1098,10 +1113,10 @@ function _calcP2Manual() {
       parts.push(`× (1+${Number(opt.value).toFixed(1)}%)`);
     } else if (opt.type === 'abs_add_custom') {
       price += Number(opt.value);
-      parts.push(`+ MNT ${Number(opt.value).toLocaleString()}`);
+      parts.push(`+ SGD ${Number(opt.value).toFixed(2)}`);
     }
   });
-  return { kup: Math.max(price, 0), formulaStr: `${(parts.join('  ') || 'MNT 0')}  =  KUP  MNT ${Math.round(Math.max(price, 0)).toLocaleString()}` };
+  return { kup: Math.max(price, 0), formulaStr: `${(parts.join('  ') || 'SGD 0')}  =  KUP  SGD ${Math.max(price, 0).toFixed(2)}` };
 }
 
 function _renderP2Manual() {
@@ -1134,9 +1149,9 @@ function _renderP2Manual() {
   const aggReason  = _p2ManualScenarioReason('aggressive',   _p2ManualSeg);
   const avgReason  = _p2ManualScenarioReason('average',      _p2ManualSeg);
   const consReason = _p2ManualScenarioReason('conservative', _p2ManualSeg);
-  const aggFormula  = `KUP MNT ${Math.round(calc.kup).toLocaleString()} × 0.90 = MNT ${Math.round(agg).toLocaleString()}`;
-  const avgFormula  = `KUP MNT ${Math.round(avg).toLocaleString()} (기준가 그대로)`;
-  const consFormula = `KUP MNT ${Math.round(calc.kup).toLocaleString()} × 1.10 = MNT ${Math.round(cons).toLocaleString()}`;
+  const aggFormula  = `KUP SGD ${calc.kup.toFixed(2)} × 0.90 = SGD ${agg.toFixed(2)}`;
+  const avgFormula  = `KUP SGD ${avg.toFixed(2)} (기준가 그대로)`;
+  const consFormula = `KUP SGD ${calc.kup.toFixed(2)} × 1.10 = SGD ${cons.toFixed(2)}`;
   _p2LastScenarios = { mode: 'manual', seg: _p2ManualSeg, base: calc.kup, agg, avg, cons, formulaStr: calc.formulaStr, aggReason, avgReason, consReason, aggFormula, avgFormula, consFormula, rationaleLines: [] };
 }
 
@@ -1148,7 +1163,7 @@ function _p2OptionCardHtml(opt) {
                  : opt.unit === '%'    ? Number(opt.value).toFixed(0)
                  :                       Number(opt.value).toFixed(2);
   // 단위 표시
-  const unitLabel = opt.unit === '%' ? '%' : opt.unit === 'rate' ? '' : 'MNT';
+  const unitLabel = opt.unit === '%' ? '%' : opt.unit === 'rate' ? '' : 'SGD';
 
   return `
     <div class="p2-step-card">
@@ -1207,7 +1222,7 @@ function _renderP2CustomAddSection() {
       <select class="p2-custom-type-select" id="p2c-type">
         <option value="pct_deduct">% 차감</option>
         <option value="pct_add_custom">% 가산</option>
-        <option value="abs_add_custom">MNT 가산</option>
+        <option value="abs_add_custom">SGD 가산</option>
       </select>
       <input class="p2-custom-input" id="p2c-val" type="number" placeholder="값" step="100" min="0" max="9999999" style="width:80px;flex:0 0 80px">
       <button class="p2-add-custom-btn" id="p2c-add" type="button">+ 추가</button>
@@ -1222,7 +1237,7 @@ function _renderP2CustomAddSection() {
       label,
       value: val,
       type,
-      unit: type === 'abs_add_custom' ? 'MNT' : '%',
+      unit: type === 'abs_add_custom' ? 'SGD' : '%',
       step: type === 'abs_add_custom' ? 100 : 1,
       min: 0,
       max: type === 'abs_add_custom' ? 9999999 : 100,
@@ -1379,7 +1394,7 @@ function resetProgress() {
  */
 async function runPipeline() {
   if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; }
-  const productKey = document.getElementById('product-select').value;
+  const productKey = normalizeProductKey(document.getElementById('product-select').value);
   _currentKey      = productKey;
 
   // UI 초기화
@@ -1784,10 +1799,10 @@ function _formatDetailed(text) {
 }
 
 function _pbsLineFromApi(result) {
-  const mnt    = result.ref_price_mnt;
-  const mntNum = mnt != null && mnt !== '' ? Number(mnt) : NaN;
-  if (!Number.isNaN(mntNum) && mntNum > 0) {
-    return `참고가 MNT ${Math.round(mntNum).toLocaleString()}`;
+  const sgd = result.ref_price_sgd ?? result.pbs_dpmq_sgd_hint;
+  const sgdNum = sgd != null && sgd !== '' ? Number(sgd) : NaN;
+  if (!Number.isNaN(sgdNum) && sgdNum > 0) {
+    return `참고가 SGD ${sgdNum.toFixed(2)}`;
   }
   const haiku = String(result.pbs_haiku_estimate || '').trim();
   if (haiku) return haiku;
@@ -1868,14 +1883,14 @@ let _p3PdfName   = null;
 
 // P1 product_key → 표시 레이블 (P3 연동용)
 const P3_PRODUCT_LABELS = {
-  MN_ciloduo_cilosta_rosuva: 'Ciloduo · Cilostazol + Rosuvastatin',
-  MN_rosumeg_combigel:     'Rosumeg Combigel · Rosuvastatin + Omega-3',
-  MN_atmeg_combigel:       'Atmeg Combigel · Atorvastatin + Omega-3',
-  MN_gastiin_cr_mosapride: 'Gastiin CR · Mosapride Citrate 15mg',
-  MN_omethyl_omega3_2g:    'Omethyl Cutielet · Omega-3 EE 2g',
-  MN_hydrine_hydroxyurea:  'Hydrine · Hydroxyurea 500mg',
-  MN_sereterol_activair:   'Sereterol Activair · Fluticasone + Salmeterol',
-  MN_gadvoa_gadobutrol:    'Gadvoa Inj. · Gadobutrol',
+  SG_ciloduo_cilosta_rosuva: 'Ciloduo · Cilostazol + Rosuvastatin',
+  SG_rosumeg_combigel: 'Rosumeg Combigel · Rosuvastatin + Omega-3',
+  SG_atmeg_combigel: 'Atmeg Combigel · Atorvastatin + Omega-3',
+  SG_gastiin_cr_mosapride: 'Gastiin CR · Mosapride Citrate 15mg',
+  SG_omethyl_omega3_2g: 'Omethyl Cutielet · Omega-3 EE 2g',
+  SG_hydrine_hydroxyurea_500: 'Hydrine · Hydroxyurea 500mg',
+  SG_sereterol_activair: 'Sereterol Activair · Fluticasone + Salmeterol',
+  SG_gadvoa_gadobutrol_604: 'Gadvoa Inj. · Gadobutrol',
 };
 
 /** P1 품목 선택 변경 시 P3 연동 레이블 갱신 */
@@ -1883,7 +1898,7 @@ function _syncP3ProductLabel() {
   const p1Select = document.getElementById('product-select');
   const labelEl  = document.getElementById('p3-product-label');
   if (!labelEl) return;
-  const key = p1Select?.value || '';
+  const key = normalizeProductKey(p1Select?.value || '');
   labelEl.textContent = P3_PRODUCT_LABELS[key] || '1공정 시장조사를 먼저 실행해 주세요.';
   labelEl.classList.toggle('p3-product-label--ready', !!P3_PRODUCT_LABELS[key]);
 }
@@ -1911,8 +1926,8 @@ async function runP3Pipeline() {
   const icon    = document.getElementById('p3-run-icon');
   const errEl   = document.getElementById('p3-error-msg');
   const fromReport = _getSelectedReportFromSelect('p3-report-select');
-  const productFromReport = fromReport && fromReport.product_id ? String(fromReport.product_id) : '';
-  const product = productFromReport || document.getElementById('product-select')?.value || 'SG_sereterol_activair';
+  const productFromReport = normalizeProductKey(fromReport && fromReport.product_id ? String(fromReport.product_id) : '');
+  const product = productFromReport || normalizeProductKey(document.getElementById('product-select')?.value) || 'SG_sereterol_activair';
   const skelEl  = document.getElementById('p3-skel');
   const resultSection = document.getElementById('p3-result-section');
 
@@ -2033,7 +2048,7 @@ function _renderP3Cards(buyers) {
 
   wrap.innerHTML = buyers.map((b, i) => {
     const pri       = b.priority === 1 ? 1 : 2;
-    const priLabel  = pri === 1 ? '성분 일치' : 'Mongolia';
+    const priLabel  = pri === 1 ? '성분 일치' : 'Singapore';
     const priClass  = pri === 1 ? 'p3-tag-p1' : 'p3-tag-p2';
     const matched   = (b.matched_ingredients || []).join(' · ') || '';
     const score     = b.composite_score ?? 0;
@@ -2083,7 +2098,7 @@ function showBuyerDetail(idx) {
   if (!b) return;
   const e = b.enriched || {};
   const rankEmoji = ['🥇','🥈','🥉','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟'];
-  const priLabel = b.priority === 1 ? '성분 일치' : 'Mongolia';
+  const priLabel = b.priority === 1 ? '성분 일치' : 'Singapore';
   const priClass = b.priority === 1 ? 'p3-tag-p1' : 'p3-tag-p2';
 
   function row(label, val) {
@@ -2239,21 +2254,21 @@ async function loadAhpPartners() {
 }
 
 /* ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-   §13. Leaflet 지도 초기화 (몽골)
+   §13. Leaflet 지도 초기화 (싱가포르)
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ */
 
-(function initMnMap() {
-  const el = document.getElementById('mn-map');
+(function initSgMap() {
+  const el = document.getElementById('sg-map');
   if (!el || typeof L === 'undefined') return;
-  const map = L.map('mn-map', { zoomControl: true, scrollWheelZoom: true });
+  const map = L.map('sg-map', { zoomControl: true, scrollWheelZoom: true });
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap',
-    maxZoom: 10,
+    maxZoom: 14,
   }).addTo(map);
-  map.setView([47.8864, 106.9057], 5);
-  L.marker([47.8864, 106.9057])
+  map.setView([1.3521, 103.8198], 11);
+  L.marker([1.3521, 103.8198])
     .addTo(map)
-    .bindPopup('<b>Ulaanbaatar</b><br>몽골 수도')
+    .bindPopup('<b>Singapore</b><br>싱가포르')
     .openPopup();
   setTimeout(() => { map.invalidateSize(); }, 120);
 })();

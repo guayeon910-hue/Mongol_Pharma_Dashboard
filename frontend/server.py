@@ -29,8 +29,6 @@ from pydantic import BaseModel
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from frontend.dashboard_sites import DASHBOARD_SITES
-
 STATIC = Path(__file__).resolve().parent / "static"
 
 DEFAULT_HOST = "127.0.0.1"
@@ -48,7 +46,25 @@ async def _lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="MN Analysis Dashboard", version="3.0.0", lifespan=_lifespan)
+LEGACY_PRODUCT_KEY_MAP: dict[str, str] = {
+    "MN_ciloduo_cilosta_rosuva": "SG_ciloduo_cilosta_rosuva",
+    "MN_rosumeg_combigel": "SG_rosumeg_combigel",
+    "MN_atmeg_combigel": "SG_atmeg_combigel",
+    "MN_gastiin_cr_mosapride": "SG_gastiin_cr_mosapride",
+    "MN_omethyl_omega3_2g": "SG_omethyl_omega3_2g",
+    "MN_hydrine_hydroxyurea": "SG_hydrine_hydroxyurea_500",
+    "MN_hydrine_hydroxyurea_500": "SG_hydrine_hydroxyurea_500",
+    "MN_sereterol_activair": "SG_sereterol_activair",
+    "MN_gadvoa_gadobutrol": "SG_gadvoa_gadobutrol_604",
+    "MN_gadvoa_gadobutrol_604": "SG_gadvoa_gadobutrol_604",
+}
+
+
+def _normalize_product_key(product_key: str) -> str:
+    return LEGACY_PRODUCT_KEY_MAP.get(product_key, product_key)
+
+
+app = FastAPI(title="SG Analysis Dashboard", version="3.0.0", lifespan=_lifespan)
 
 import os as _os
 _cors_origins = _os.environ.get("CORS_ORIGINS", "*").split(",")
@@ -215,7 +231,7 @@ def _parse_perplexity_news_items(raw_text: str) -> list[dict[str, str]]:
 
 @app.get("/api/news")
 async def api_news() -> JSONResponse:
-    """Perplexity 기반 몽골 제약 시장 뉴스 (30분 캐시)."""
+    """Perplexity 기반 싱가포르 의약품 시장 뉴스 (30분 캐시)."""
     import time as _time
     import os
     import httpx
@@ -234,17 +250,17 @@ async def api_news() -> JSONResponse:
                 {
                     "role": "system",
                     "content": (
-                        "You are a Mongolia pharmaceutical market analyst. "
+                        "You are a Singapore pharmaceutical market analyst. "
                         "Return ONLY a JSON array with up to 6 recent news items. "
-                        "All 'title' values MUST be written in Korean (한국어). "
-                        "Translate any English or Mongolian titles into natural Korean."
+                        "All 'title' values MUST be written in Korean. "
+                        "Translate any English titles into natural Korean."
                     ),
                 },
                 {
                     "role": "user",
                     "content": (
-                        "Find the latest Mongolia pharmaceutical market, MMRA regulatory news, "
-                        "drug pricing policy (EMD, HIF), and public procurement (tender.gov.mn). "
+                        "Find the latest Singapore pharmaceutical market, HSA regulatory news, "
+                        "drug pricing policy, hospital procurement, and public sector tender news. "
                         "Return a strict JSON array. Each item must have keys: "
                         "title (Korean translation required), source, date, link. "
                         "Translate all titles to Korean. Do not use English titles."
@@ -288,8 +304,9 @@ async def api_news() -> JSONResponse:
 
 @app.get("/api/macro")
 async def api_macro() -> JSONResponse:
-    from utils.mn_macro import get_mn_macro_cards
-    return JSONResponse(get_mn_macro_cards())
+    from utils.sg_macro import get_sg_macro_cards
+
+    return JSONResponse(get_sg_macro_cards())
 
 
 # ── 환율 (yfinance SGD/KRW) ───────────────────────────────────────────────────
@@ -300,7 +317,7 @@ _EXCHANGE_TTL_SEC = 0.0
 
 @app.get("/api/exchange")
 async def api_exchange() -> JSONResponse:
-    """MNT/KRW 실시간 환율 (yfinance). 짧은 캐시로 준실시간 제공."""
+    """SGD/KRW 실시간 환율 (yfinance). 짧은 캐시로 준실시간 제공."""
     import time as _time
 
     if _exchange_cache["data"] and _time.time() - _exchange_cache["ts"] < _EXCHANGE_TTL_SEC:
@@ -309,14 +326,14 @@ async def api_exchange() -> JSONResponse:
     def _fetch() -> dict[str, Any]:
         import yfinance as yf  # type: ignore[import]
         usd_krw = float(yf.Ticker("USDKRW=X").fast_info.last_price)
-        usd_mnt = float(yf.Ticker("USDMNT=X").fast_info.last_price)
-        mnt_usd = 1.0 / usd_mnt if usd_mnt > 0 else 0.000290
-        mnt_krw = mnt_usd * usd_krw
+        sgd_krw = float(yf.Ticker("SGDKRW=X").fast_info.last_price)
+        usd_sgd = float(yf.Ticker("USDSGD=X").fast_info.last_price)
+        sgd_usd = 1.0 / usd_sgd if usd_sgd > 0 else 0.74
         return {
-            "mnt_usd": round(mnt_usd, 7),
-            "mnt_krw": round(mnt_krw, 5),
+            "sgd_usd": round(sgd_usd, 4),
+            "sgd_krw": round(sgd_krw, 2),
             "usd_krw": round(usd_krw, 2),
-            "usd_mnt": round(usd_mnt, 2),
+            "usd_sgd": round(usd_sgd, 4),
             "source": "Yahoo Finance",
             "fetched_at": _time.time(),
             "ok": True,
@@ -330,10 +347,10 @@ async def api_exchange() -> JSONResponse:
         return JSONResponse(data)
     except Exception as exc:
         fallback: dict[str, Any] = {
-            "mnt_usd": 0.000290,
-            "mnt_krw": 0.4037,
+            "sgd_usd": 0.74,
+            "sgd_krw": 1085.0,
             "usd_krw": 1393.0,
-            "usd_mnt": 3450.0,
+            "usd_sgd": 1.3514,
             "source": "폴백 (Yahoo Finance 연결 실패)",
             "fetched_at": _time.time(),
             "ok": False,
@@ -348,6 +365,7 @@ _pipeline_tasks: dict[str, dict[str, Any]] = {}
 
 
 async def _run_pipeline_for_product(product_key: str) -> None:
+    product_key = _normalize_product_key(product_key)
     task = _pipeline_tasks[product_key]
     try:
         # 0. DB 조회 (Supabase)
@@ -355,8 +373,11 @@ async def _run_pipeline_for_product(product_key: str) -> None:
         await _emit({"phase": "pipeline", "message": f"{product_key} — DB 조회 중", "level": "info"})
 
         from utils.db import fetch_kup_products
-        country = "MN" if product_key.startswith("MN_") else "SG"
-        kup_rows = await asyncio.to_thread(fetch_kup_products, country)
+        try:
+            kup_rows = await asyncio.to_thread(fetch_kup_products, "SG")
+        except Exception as exc:
+            kup_rows = []
+            await _emit({"phase": "pipeline", "message": f"Supabase 조회 폴백: {exc}", "level": "warn"})
         db_row = next((r for r in kup_rows if r.get("product_id") == product_key), None)
 
         if db_row is None:
@@ -401,7 +422,7 @@ async def _run_pipeline_for_product(product_key: str) -> None:
                 references=_refs_map,
             )
         )
-        _pdf_name = f"mn_report_{product_key}_{_ts}.pdf"
+        _pdf_name = f"sg_report_{product_key}_{_ts}.pdf"
         _pdf_path = _reports_dir / _pdf_name
         await asyncio.to_thread(render_pdf, _report, _pdf_path)
 
@@ -451,7 +472,10 @@ async def _run_custom_pipeline(trade_name: str, inn: str, dosage_form: str) -> N
         _reports_dir2 = ROOT / "reports"
         _reports_dir2.mkdir(parents=True, exist_ok=True)
 
-        _products_db2 = await asyncio.to_thread(fetch_kup_products, "SG")
+        try:
+            _products_db2 = await asyncio.to_thread(fetch_kup_products, "SG")
+        except Exception:
+            _products_db2 = []
         _refs_map2 = {"custom": refs}
         _report2 = await asyncio.to_thread(
             lambda: build_report(
@@ -461,7 +485,7 @@ async def _run_custom_pipeline(trade_name: str, inn: str, dosage_form: str) -> N
                 references=_refs_map2,
             )
         )
-        _pdf_name2 = f"mn_report_custom_{_ts2}.pdf"
+        _pdf_name2 = f"sg_report_custom_{_ts2}.pdf"
         _pdf_path2 = _reports_dir2 / _pdf_name2
         await asyncio.to_thread(render_pdf, _report2, _pdf_path2)
 
@@ -514,6 +538,7 @@ async def custom_pipeline_result() -> JSONResponse:
 
 @app.post("/api/pipeline/{product_key}")
 async def trigger_pipeline(product_key: str) -> JSONResponse:
+    product_key = _normalize_product_key(product_key)
     if _pipeline_tasks.get(product_key, {}).get("status") == "running":
         raise HTTPException(status_code=409, detail="이미 실행 중입니다.")
     _pipeline_tasks[product_key] = {
@@ -557,11 +582,18 @@ async def pipeline_result(product_key: str) -> JSONResponse:
 
 _report_cache: dict[str, Any] = {"path": None, "running": False}
 
-def _latest_report_pdf() -> Path | None:
+def _report_glob_paths() -> list[Path]:
     reports_dir = ROOT / "reports"
     if not reports_dir.exists():
-        return None
-    pdfs = [p for p in reports_dir.glob("mn_report_*.pdf") if p.is_file()]
+        return []
+    pdfs: list[Path] = []
+    for pattern in ("sg_report_*.pdf", "mn_report_*.pdf"):
+        pdfs.extend([p for p in reports_dir.glob(pattern) if p.is_file()])
+    return pdfs
+
+
+def _latest_report_pdf() -> Path | None:
+    pdfs = _report_glob_paths()
     if not pdfs:
         return None
     return max(pdfs, key=lambda p: p.stat().st_mtime)
@@ -591,8 +623,7 @@ async def trigger_report(body: ReportBody | None = None) -> JSONResponse:
             await asyncio.get_event_loop().run_in_executor(
                 None, lambda: subprocess.run(cmd, capture_output=True, text=True)
             )
-            reports_dir = ROOT / "reports"
-            pdfs = sorted(reports_dir.glob("mn_report_*.pdf"), reverse=True)
+            pdfs = sorted(_report_glob_paths(), reverse=True)
             _report_cache["path"] = str(pdfs[0]) if pdfs else None
         finally:
             _report_cache["running"] = False
@@ -603,8 +634,7 @@ async def trigger_report(body: ReportBody | None = None) -> JSONResponse:
 
 @app.get("/api/report/status")
 async def report_status() -> dict[str, Any]:
-    reports_dir = ROOT / "reports"
-    pdfs = [p for p in reports_dir.glob("mn_report_*.pdf")] if reports_dir.exists() else []
+    pdfs = _report_glob_paths()
     latest = _latest_report_pdf()
     return {
         "running": _report_cache["running"],
@@ -1035,7 +1065,10 @@ async def p2_pipeline_result_ai() -> JSONResponse:
 @app.get("/api/products")
 async def products() -> list[dict[str, Any]]:
     from utils.db import fetch_kup_products
-    return fetch_kup_products("MN")
+    try:
+        return fetch_kup_products("SG")
+    except Exception:
+        return []
 
 
 # ── API 키 상태 (U1) ──────────────────────────────────────────────────────────
@@ -1056,24 +1089,26 @@ async def keys_status() -> dict[str, Any]:
 
 @app.get("/api/datasource/status")
 async def datasource_status() -> JSONResponse:
-    """Supabase 연결 상태, KUP 품목 수, HSA 컨텍스트 출처 반환."""
+    """Supabase 연결 상태와 싱가포르 분석 데이터 준비 상태 반환."""
     try:
         from utils.db import get_client, fetch_kup_products
-        kup_rows = fetch_kup_products("MN")
+        kup_rows = fetch_kup_products("SG")
         kup_count = len(kup_rows)
 
-        # MN 약가 테이블 점검
         sb = get_client()
         ctx_count = 0
         context_source = "없음"
         try:
             ctx_rows = (
-                sb.table("mn_pricing")
-                .select("inn_name", count="exact")
+                sb.table("sg_product_context")
+                .select("product_id", count="exact")
                 .execute()
             )
             ctx_count = ctx_rows.count or 0
-            context_source = f"mn_pricing {ctx_count}건" if ctx_count else "mn_pricing 테이블 비어있음"
+            context_source = (
+                f"sg_product_context {ctx_count}건"
+                if ctx_count else "sg_product_context 테이블 비어있음"
+            )
         except Exception:
             context_source = "조회 실패"
 
@@ -1108,7 +1143,7 @@ async def status() -> dict[str, Any]:
 @app.get("/api/health")
 async def health() -> dict[str, Any]:
     """Render 헬스체크용 경량 엔드포인트."""
-    return {"ok": True, "service": "mn-analysis-dashboard"}
+    return {"ok": True, "service": "sg-analysis-dashboard"}
 
 
 @app.get("/api/stream")
@@ -1141,21 +1176,21 @@ async def stream() -> StreamingResponse:
 _buyer_task: dict[str, Any] = {}
 
 _PROD_LABELS: dict[str, str] = {
-    "MN_sereterol_activair":      "Sereterol Activair (Fluticasone+Salmeterol)",
-    "MN_omethyl_omega3_2g":       "Omethyl Cutielet (Omega-3 에틸에스테르 2g)",
-    "MN_hydrine_hydroxyurea_500": "Hydrine (Hydroxyurea 500mg)",
-    "MN_gadvoa_gadobutrol_604":   "Gadvoa Inj. (Gadobutrol)",
-    "MN_rosumeg_combigel":        "Rosumeg Combigel (Rosuvastatin+Omega-3)",
-    "MN_atmeg_combigel":          "Atmeg Combigel (Atorvastatin+Omega-3)",
-    "MN_ciloduo_cilosta_rosuva":  "Ciloduo (Cilostazol+Rosuvastatin)",
-    "MN_gastiin_cr_mosapride":    "Gastiin CR (Mosapride citrate 15mg)",
+    "SG_sereterol_activair": "Sereterol Activair (Fluticasone+Salmeterol)",
+    "SG_omethyl_omega3_2g": "Omethyl Cutielet (Omega-3 에틸에스테르 2g)",
+    "SG_hydrine_hydroxyurea_500": "Hydrine (Hydroxyurea 500mg)",
+    "SG_gadvoa_gadobutrol_604": "Gadvoa Inj. (Gadobutrol)",
+    "SG_rosumeg_combigel": "Rosumeg Combigel (Rosuvastatin+Omega-3)",
+    "SG_atmeg_combigel": "Atmeg Combigel (Atorvastatin+Omega-3)",
+    "SG_ciloduo_cilosta_rosuva": "Ciloduo (Cilostazol+Rosuvastatin)",
+    "SG_gastiin_cr_mosapride": "Gastiin CR (Mosapride citrate 15mg)",
 }
 
 
 class BuyerRunBody(BaseModel):
-    product_key:     str = "MN_sereterol_activair"
+    product_key:     str = "SG_sereterol_activair"
     active_criteria: list[str] | None = None
-    target_country:  str = "Mongolia"
+    target_country:  str = "Singapore"
     target_region:   str = "Asia"
 
 
@@ -1166,6 +1201,7 @@ async def _run_buyer_pipeline(
     target_region: str = "Asia",
 ) -> None:
     global _buyer_task
+    product_key = _normalize_product_key(product_key)
 
     async def _log(msg: str, level: str = "info") -> None:
         await _emit({"phase": "buyer", "message": msg, "level": level})
@@ -1241,6 +1277,7 @@ async def _run_buyer_pipeline(
 async def trigger_buyers(body: BuyerRunBody | None = None) -> JSONResponse:
     global _buyer_task
     req = body if body is not None else BuyerRunBody()
+    product_key = _normalize_product_key(req.product_key)
     if _buyer_task.get("status") == "running":
         raise HTTPException(409, "바이어 발굴이 이미 실행 중입니다.")
     _buyer_task = {
@@ -1248,7 +1285,7 @@ async def trigger_buyers(body: BuyerRunBody | None = None) -> JSONResponse:
         "crawl_count": 0, "all_candidates": [], "buyers": [], "pdf": None,
     }
     asyncio.create_task(_run_buyer_pipeline(
-        req.product_key,
+        product_key,
         req.active_criteria,
         req.target_country,
         req.target_region,
@@ -1551,18 +1588,10 @@ async def index() -> FileResponse:
     return FileResponse(index_path)
 
 
-@app.get("/frontend3")
-async def frontend3() -> FileResponse:
-    path = STATIC / "frontend3.html"
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="frontend3.html 없음")
-    return FileResponse(path)
-
-
 def main() -> None:
     import uvicorn
 
-    parser = argparse.ArgumentParser(description="MN 몽골 분석 대시보드")
+    parser = argparse.ArgumentParser(description="SG 싱가포르 분석 대시보드")
     parser.add_argument("--host", default=DEFAULT_HOST)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--open", action="store_true")

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>몽골 의약품 시장 분석 — MN Export AI</title>
+  <title>싱가포르 의약품 시장 분석 — SG Export AI</title>
   <link rel="icon" href="/static/images/logo.png"/>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <link rel="stylesheet" href="/static/style.css?v=7"/>
@@ -24,8 +24,8 @@
   </nav>
   <div class="topbar-r">
     <div class="pill">
-      <span class="flag-emoji">🇲🇳</span>
-      <span>Mongolia</span>
+      <span class="flag-emoji">🇸🇬</span>
+      <span>Singapore</span>
     </div>
   </div>
 </header>
@@ -50,7 +50,7 @@
         <div class="macro-source" id="macro-pharma-src">—</div>
       </div>
       <div class="macro-card">
-        <div class="macro-label">실질 성장률</div>
+        <div class="macro-label">의약품 국가 수입 의존도</div>
         <div class="macro-value" id="macro-growth">—</div>
         <div class="macro-source" id="macro-growth-src">—</div>
       </div>
@@ -59,14 +59,14 @@
     <div class="map-news-grid">
       <article class="card map-card-wrap">
         <div class="sec" style="margin-bottom:10px;">
-          <h3>몽골 위치</h3>
+          <h3>싱가포르 위치</h3>
         </div>
-        <div id="mn-map" class="sg-leaflet-map"></div>
+        <div id="sg-map" class="sg-leaflet-map"></div>
       </article>
 
       <article class="card news-card">
         <div class="sec">
-          <h3>몽골 의약품 시장 주요 동향</h3>
+          <h3>싱가포르 의약품 시장 주요 동향</h3>
           <button class="btn-refresh" id="btn-news-refresh" onclick="loadNews()" style="margin-top:0;">↺ 새로고침</button>
         </div>
         <div id="news-list">
@@ -94,14 +94,14 @@
               <div class="selector-card" style="margin-bottom:10px;">
                 <div class="selector-row">
                   <select id="product-select">
-                    <option value="MN_ciloduo_cilosta_rosuva">[개량신약] Ciloduo · cilostazol+rosuvastatin</option>
-                    <option value="MN_rosumeg_combigel">[개량신약] Rosumeg Combigel · rosuvastatin+omega-3</option>
-                    <option value="MN_atmeg_combigel">[개량신약] Atmeg Combigel · atorvastatin+omega-3</option>
-                    <option value="MN_gastiin_cr_mosapride">[개량신약] Gastiin CR · mosapride citrate 15mg</option>
-                    <option value="MN_omethyl_omega3_2g">[개량신약] Omethyl Cutielet · omega-3 ethyl esters 2g</option>
-                    <option value="MN_hydrine_hydroxyurea">[전문의약품] Hydrine · hydroxyurea 500mg</option>
-                    <option value="MN_sereterol_activair">[개량신약] Sereterol Activair · fluticasone+salmeterol</option>
-                    <option value="MN_gadvoa_gadobutrol">[전문의약품] Gadvoa Inj. · gadobutrol</option>
+                    <option value="SG_sereterol_activair">[일반제] Sereterol Activair · fluticasone+salmeterol</option>
+                    <option value="SG_omethyl_omega3_2g">[개량신약] Omethyl Cutielet · omega-3 ethyl esters 2g</option>
+                    <option value="SG_hydrine_hydroxyurea_500">[항암제] Hydrine · hydroxyurea 500mg</option>
+                    <option value="SG_gadvoa_gadobutrol_604">[일반제] Gadvoa Inj. · gadobutrol 604.72mg</option>
+                    <option value="SG_rosumeg_combigel">[개량신약] Rosumeg Combigel · rosuvastatin+omega-3</option>
+                    <option value="SG_atmeg_combigel">[개량신약] Atmeg Combigel · atorvastatin+omega-3</option>
+                    <option value="SG_ciloduo_cilosta_rosuva">[개량신약] Ciloduo · cilostazol+rosuvastatin</option>
+                    <option value="SG_gastiin_cr_mosapride">[개량신약] Gastiin CR · mosapride citrate 15mg</option>
                   </select>
                   <button class="btn-analyze" id="btn-analyze" onclick="runPipeline()">
                     <span id="btn-icon">▶</span> 시장 조사
