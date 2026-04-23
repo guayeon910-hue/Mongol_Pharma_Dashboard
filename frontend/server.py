@@ -60,6 +60,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
+
 
 async def _emit(event: dict[str, Any]) -> None:
     payload = {**event, "ts": time.time()}
@@ -1555,9 +1557,6 @@ async def frontend3() -> FileResponse:
     if not path.is_file():
         raise HTTPException(status_code=404, detail="frontend3.html 없음")
     return FileResponse(path)
-
-
-app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
 
 def main() -> None:
