@@ -4,7 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>몽골 수출 적합성 분석 — UPharma Export AI</title>
-  <link rel="stylesheet" href="/static/style.css?v=24"/>
+  <link rel="stylesheet" href="/static/style.css?v=25"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 </head>
@@ -176,8 +176,8 @@
                       <span class="p2-col-label"><span class="term" data-tip="에이전트 수수료 3%, 운임 승수 0.85x 적용. 가격 경쟁력 우선 전략으로 시장 초기 침투에 적합합니다.">저가 진입</span></span>
                     </div>
                     <div class="p2-col-price" id="p2c-price-agg">—</div>
-                    <div class="p2-col-currency">USD</div>
-                    <div class="p2-col-sub" id="p2c-sub-agg">— MNT</div>
+                    <div class="p2-col-currency">MNT</div>
+                    <div class="p2-col-sub" id="p2c-sub-agg">— USD · — KRW</div>
                     <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;">클릭하여 편집</div>
                   </div>
 
@@ -186,8 +186,8 @@
                       <span class="p2-col-label"><span class="term" data-tip="에이전트 수수료 5%, 운임 승수 1.00x 적용. 시장 평균 수준의 균형 잡힌 가격 전략입니다.">기준가</span></span>
                     </div>
                     <div class="p2-col-price" id="p2c-price-avg">—</div>
-                    <div class="p2-col-currency">USD</div>
-                    <div class="p2-col-sub" id="p2c-sub-avg">— MNT</div>
+                    <div class="p2-col-currency">MNT</div>
+                    <div class="p2-col-sub" id="p2c-sub-avg">— USD · — KRW</div>
                     <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;">클릭하여 편집</div>
                   </div>
 
@@ -196,8 +196,8 @@
                       <span class="p2-col-label"><span class="term" data-tip="에이전트 수수료 10%, 운임 승수 1.20x 적용. 브랜드 프리미엄 및 수익 마진 확보를 위한 보수적 전략입니다.">프리미엄</span></span>
                     </div>
                     <div class="p2-col-price" id="p2c-price-cons">—</div>
-                    <div class="p2-col-currency">USD</div>
-                    <div class="p2-col-sub" id="p2c-sub-cons">— MNT</div>
+                    <div class="p2-col-currency">MNT</div>
+                    <div class="p2-col-sub" id="p2c-sub-cons">— USD · — KRW</div>
                     <div style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;">클릭하여 편집</div>
                   </div>
 
@@ -379,14 +379,14 @@
 
   <!-- ════ P2 역산·옵션 편집 모달 ════ -->
   <div id="p2-edit-overlay" class="buyer-modal-overlay" style="display:none;" onclick="closeP2EditModal(event)">
-    <div class="buyer-modal" id="p2-edit-modal" style="width:470px;max-width:95vw;padding:22px 24px;">
+    <div class="buyer-modal" id="p2-edit-modal" style="width:560px;max-width:95vw;padding:22px 24px;">
       <button class="buyer-modal-close" onclick="closeP2EditModal()">✕</button>
       <div style="margin-bottom:14px;">
         <strong id="p2em-title" style="font-size:15px;color:var(--navy);">역산 · 옵션 편집</strong>
       </div>
       <!-- 보고서 가격 참조 (읽기 전용) -->
       <div class="p2-col-input-row">
-        <label class="p2-col-input-label">보고서 가격</label>
+        <label class="p2-col-input-label">현재 산출가</label>
         <div class="p2-col-input p2-ref-price-box" style="cursor:default;pointer-events:none;">
           <div class="p2-ref-price-main">
             <span id="p2em-ref-mnt">—</span>
@@ -399,12 +399,27 @@
           </div>
         </div>
       </div>
-      <!-- 기준가 (USD) -->
-      <div class="p2-col-input-row">
-        <label class="p2-col-input-label">기준가 (USD)</label>
-        <input class="p2-col-input" type="number" id="p2em-base" step="0.01" min="0" oninput="recalcP2ColModal()">
+      <div class="p2-basis-box">
+        <div class="p2-basis-title">기준 산식</div>
+        <div class="p2-basis-grid">
+          <label>
+            <span>기준가</span>
+            <input class="p2-col-input" type="number" id="p2em-base" step="1" min="0" oninput="recalcP2ColModal()">
+            <em>MNT</em>
+          </label>
+          <label>
+            <span>수수료</span>
+            <input class="p2-col-input" type="number" id="p2em-fee" step="0.1" min="0" max="100" oninput="recalcP2ColModal()">
+            <em>%</em>
+          </label>
+          <label>
+            <span>운임/보정</span>
+            <input class="p2-col-input" type="number" id="p2em-freight" step="0.01" min="0.01" max="10" oninput="recalcP2ColModal()">
+            <em>×</em>
+          </label>
+        </div>
+        <div class="p2-basis-formula" id="p2em-formula">—</div>
       </div>
-      <!-- 옵션 목록 (fee·freight 포함, 전부 삭제 가능) -->
       <div style="font-size:11px;color:var(--muted);margin:10px 0 4px;font-weight:700;">추가 옵션</div>
       <div id="p2em-opts" class="p2-custom-opts"></div>
       <!-- 옵션 추가 폼 (항상 표시) -->
@@ -477,7 +492,7 @@
   </button>
 </div>
 
-<script src="/static/app.js?v=24"></script>
+<script src="/static/app.js?v=25"></script>
 <script>
 function toggleManual() {
   var body  = document.getElementById('manual-body');

@@ -974,12 +974,18 @@ function openP2EditModal(col) {
   const overlay = document.getElementById('p2-edit-overlay');
   const title = document.getElementById('p2em-title');
   const baseInput = document.getElementById('p2em-base');
+  const feeInput = document.getElementById('p2em-fee');
+  const freightInput = document.getElementById('p2em-freight');
   const colBase = document.getElementById('p2ci-base-' + col);
+  const colFee = document.getElementById('p2ci-fee-' + col);
+  const colFreight = document.getElementById('p2ci-freight-' + col);
   const colPrice = document.getElementById('p2c-price-' + col);
   const colSub = document.getElementById('p2c-sub-' + col);
   const names = { agg: '저가 진입', avg: '기준가', cons: '프리미엄' };
   if (title) title.textContent = `역산 · 옵션 편집 (${names[col] || col})`;
   if (baseInput) baseInput.value = String(colBase?.value || '').replace(/,/g, '') || _p2ScenarioRaw[col] || 0;
+  if (feeInput) feeInput.value = String(colFee?.value || '0').replace(/,/g, '');
+  if (freightInput) freightInput.value = String(colFreight?.value || '1').replace(/,/g, '');
   _setText('p2em-ref-mnt', colPrice ? colPrice.textContent : '—');
   const usdMatch = String(colSub?.textContent || '').match(/([0-9,.]+)\s*USD/i);
   _setText('p2em-ref-usd', usdMatch ? usdMatch[1] : '—');
@@ -1028,12 +1034,23 @@ function recalcP2ColModal() {
   const col = _p2ActiveEditCol;
   if (!col) return;
   const baseInput = document.getElementById('p2em-base');
+  const feeInput = document.getElementById('p2em-fee');
+  const freightInput = document.getElementById('p2em-freight');
   const colBase = document.getElementById('p2ci-base-' + col);
+  const colFee = document.getElementById('p2ci-fee-' + col);
+  const colFreight = document.getElementById('p2ci-freight-' + col);
   if (baseInput && colBase) colBase.value = baseInput.value || 0;
+  if (feeInput && colFee) colFee.value = feeInput.value || 0;
+  if (freightInput && colFreight) colFreight.value = freightInput.value || 1;
   recalcP2Col(col);
   const result = document.getElementById('p2em-result');
+  const formula = document.getElementById('p2em-formula');
   const colPrice = document.getElementById('p2c-price-' + col);
   const colSub = document.getElementById('p2c-sub-' + col);
+  const base = Number(colBase?.value || 0);
+  const fee = Number(colFee?.value || 0);
+  const freight = Number(colFreight?.value || 1);
+  if (formula) formula.textContent = `MNT ${Math.round(base).toLocaleString('ko-KR')} × (1 - ${fee}%) × ${freight}`;
   if (result) result.textContent = `${colPrice?.textContent || '—'} MNT · ${colSub?.textContent || ''}`;
 }
 
@@ -1153,6 +1170,7 @@ function _renderP2AiResult(data) {
     const col     = cols[i];
     if (!col) return;
     const priceMnt = Number(s.price_mnt || s.price_sgd || 0);
+    const baseMnt = Number(s.base_mnt || s.base_price_mnt || s.basis_mnt || priceMnt);
     _p2ScenarioRaw[col]      = priceMnt;
     _p2ScenarioRaw.local_usd = mntUsd;
     _p2ScenarioRaw.local_krw = mntKrw;
@@ -1166,18 +1184,16 @@ function _renderP2AiResult(data) {
     const subEl   = document.getElementById('p2c-sub-' + col);
     const refEl   = document.getElementById('p2c-ref-' + col);
     const baseInput = document.getElementById('p2ci-base-' + col);
+    const feeInput = document.getElementById('p2ci-fee-' + col);
+    const freightInput = document.getElementById('p2ci-freight-' + col);
 
     if (refEl)     refEl.textContent   = refLabel;
-    if (priceEl)   priceEl.textContent = Math.round(priceMnt).toLocaleString('ko-KR');
-    if (baseInput) baseInput.value     = Math.round(priceMnt);
-    if (subEl) {
-      const usd = mntUsd > 0 ? (priceMnt * mntUsd).toFixed(2) : '—';
-      const krw = mntKrw > 0 ? Math.round(priceMnt * mntKrw).toLocaleString('ko-KR') : '—';
-      subEl.textContent = `${usd} USD · ${krw} KRW`;
-    }
-    // Reset custom options for each column on new AI result
+    if (baseInput) baseInput.value = Math.round(baseMnt);
+    if (feeInput && s.fee_pct != null) feeInput.value = Number(s.fee_pct);
+    if (freightInput && s.freight_multiplier != null) freightInput.value = Number(s.freight_multiplier);
     _p2ColData[col] = { opts: [] };
     renderP2ColOptions(col, false);
+    recalcP2Col(col);
   });
 
   // 경쟁가 분포

@@ -1735,6 +1735,53 @@ select:focus { box-shadow: 0 0 0 3px rgba(23,63,120,.15); }
   font-weight: 700;
   color: #2a9d8f;
 }
+.p2-basis-box {
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  background: rgba(23,63,120,.035);
+  border: 1px solid rgba(23,63,120,.08);
+}
+.p2-basis-title {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+.p2-basis-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.p2-basis-grid label {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  min-width: 0;
+}
+.p2-basis-grid span {
+  font-size: 11px;
+  color: var(--muted);
+  font-weight: 700;
+}
+.p2-basis-grid em {
+  font-style: normal;
+  font-size: 10px;
+  color: var(--muted);
+  text-align: right;
+}
+.p2-basis-grid .p2-col-input {
+  width: 100%;
+}
+.p2-basis-formula {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(23,63,120,.08);
+  font-size: 11px;
+  font-weight: 800;
+  color: var(--navy);
+  word-break: keep-all;
+}
 #p2em-result {
   white-space: pre-line;
   line-height: 1.45;

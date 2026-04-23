@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import sys
 import threading
 import time
@@ -683,7 +684,163 @@ async def generate_p2_report(body: P2ReportBody) -> JSONResponse:
     return JSONResponse({"ok": True, "pdf": pdf_name})
 
 
-# ── 2공정 AI 파이프라인 (PDF → Haiku 가격 추출 → 계산 → Haiku 분석 → PDF) ────────
+# ── 2공정 AI 파이프라인 (PDF → Haiku 가격 추출 → 결정형 산식 계산 → PDF) ────────
+
+
+def _p2_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        cleaned = str(value).replace(",", "").strip()
+        if not cleaned:
+            return None
+        return float(cleaned)
+    except Exception:
+        return None
+
+
+def _p2_price_match(text: str, patterns: list[str]) -> float | None:
+    src = str(text or "")
+    for pattern in patterns:
+        for match in re.finditer(pattern, src, re.I):
+            val = _p2_float(match.group(1))
+            if val and val > 0:
+                return val
+    return None
+
+
+def _normalize_p2_extracted_price(
+    extracted: dict[str, Any],
+    pdf_text: str,
+    exchange_rates: dict[str, Any],
+) -> dict[str, Any]:
+    """Make the report reference price deterministic and always MNT-based."""
+    out = dict(extracted or {})
+    ref_text = str(out.get("ref_price_text") or "")
+    text = "\n".join([ref_text, str(pdf_text or "")[:7000]])
+    usd_mnt = _p2_float(exchange_rates.get("usd_mnt")) or 3450.0
+    mnt_krw = _p2_float(exchange_rates.get("mnt_krw")) or 0.4037
+
+    mnt_hint = _p2_price_match(text, [
+        r"(?:MNT|₮)\s*([0-9][0-9,\s]*(?:\.[0-9]+)?)",
+        r"([0-9][0-9,\s]*(?:\.[0-9]+)?)\s*(?:MNT|₮|төгрөг)",
+    ])
+    usd_hint = _p2_price_match(text, [
+        r"(?:USD|US\$)\s*([0-9][0-9,\s]*(?:\.[0-9]+)?)",
+        r"\$\s*([0-9][0-9,\s]*(?:\.[0-9]+)?)",
+        r"([0-9][0-9,\s]*(?:\.[0-9]+)?)\s*(?:USD|US\$)",
+    ])
+    krw_hint = _p2_price_match(text, [
+        r"(?:KRW|₩)\s*([0-9][0-9,\s]*(?:\.[0-9]+)?)",
+        r"([0-9][0-9,\s]*(?:\.[0-9]+)?)\s*(?:KRW|원)",
+    ])
+
+    raw_val = _p2_float(out.get("ref_price_mnt"))
+    raw_currency = str(out.get("ref_price_currency") or "").upper()
+    ref_price_mnt: float | None = None
+    basis_currency = "MNT"
+
+    if raw_val and raw_val > 0:
+        has_mnt_unit = bool(re.search(r"MNT|₮|төгрөг", ref_text, re.I))
+        has_usd_unit = bool(re.search(r"USD|US\$|\$", ref_text, re.I))
+        has_krw_unit = bool(re.search(r"KRW|₩|원", ref_text, re.I))
+        if raw_currency == "USD":
+            if mnt_hint:
+                ref_price_mnt = mnt_hint
+            else:
+                ref_price_mnt = raw_val * usd_mnt
+                basis_currency = "USD"
+        elif raw_currency == "KRW":
+            if mnt_hint:
+                ref_price_mnt = mnt_hint
+            else:
+                ref_price_mnt = raw_val / mnt_krw
+                basis_currency = "KRW"
+        elif raw_val < 1000 and has_usd_unit and not has_mnt_unit:
+            ref_price_mnt = raw_val * usd_mnt
+            basis_currency = "USD"
+        elif has_krw_unit and not has_mnt_unit:
+            ref_price_mnt = raw_val / mnt_krw
+            basis_currency = "KRW"
+        elif raw_val < 1000 and mnt_hint and mnt_hint > raw_val * 20:
+            ref_price_mnt = mnt_hint
+        else:
+            ref_price_mnt = raw_val
+
+    if not ref_price_mnt:
+        if mnt_hint:
+            ref_price_mnt = mnt_hint
+            basis_currency = "MNT"
+        elif usd_hint:
+            ref_price_mnt = usd_hint * usd_mnt
+            basis_currency = "USD"
+            if not ref_text:
+                ref_text = f"USD {usd_hint:,.2f}"
+        elif krw_hint and mnt_krw > 0:
+            ref_price_mnt = krw_hint / mnt_krw
+            basis_currency = "KRW"
+            if not ref_text:
+                ref_text = f"KRW {krw_hint:,.0f}"
+
+    if ref_price_mnt and ref_price_mnt > 0:
+        rounded = round(ref_price_mnt)
+        out["ref_price_mnt"] = rounded
+        out["ref_price_currency"] = "MNT"
+        out["price_basis_currency"] = basis_currency
+        out["ref_price_text"] = ref_text or f"MNT {rounded:,.0f}"
+
+    return out
+
+
+def _build_p2_price_analysis(
+    extracted: dict[str, Any],
+    exchange_rates: dict[str, Any],
+    market: str,
+) -> dict[str, Any]:
+    ref_price = _p2_float(extracted.get("ref_price_mnt")) or 0.0
+    market_label = "공공 시장" if market == "public" else "민간 시장"
+    if ref_price <= 0:
+        return {
+            "final_price_mnt": 0,
+            "rationale": "보고서에서 MNT·USD·KRW 기준 가격을 확인하지 못해 가격을 산정하지 않았습니다. 기준가를 직접 입력하면 동일 산식으로 즉시 재계산할 수 있습니다.",
+            "scenarios": [],
+            "pricing_logic": "기준가(MNT) × (1 - 수수료%) × 운임/보정 배수 + 추가 옵션",
+        }
+
+    defaults = [
+        ("저가 진입", "agg", 3.0, 0.85, "시장 진입 초기 가격경쟁력을 우선하는 저마진 포지셔닝입니다."),
+        ("기준가", "avg", 5.0, 1.00, "리스크와 마진의 균형을 유지하는 표준 포지셔닝입니다."),
+        ("프리미엄", "cons", 10.0, 1.20, "브랜드·공급 안정성 프리미엄을 반영한 보수적 포지셔닝입니다."),
+    ]
+    if market != "public":
+        defaults = [
+            ("저가 진입", "agg", 8.0, 0.95, "약국·도매 채널 초기 입고 장벽을 낮추는 저마진 포지셔닝입니다."),
+            ("기준가", "avg", 12.0, 1.05, "민간 유통 마진과 재고 리스크를 함께 반영한 표준 포지셔닝입니다."),
+            ("프리미엄", "cons", 18.0, 1.18, "처방 신뢰도와 파트너 마진을 더 확보하는 보수적 포지셔닝입니다."),
+        ]
+
+    scenarios = []
+    for name, key, fee_pct, freight, reason in defaults:
+        price = max(ref_price * (1 - fee_pct / 100.0) * freight, 0)
+        scenarios.append({
+            "name": name,
+            "key": key,
+            "base_mnt": round(ref_price),
+            "fee_pct": fee_pct,
+            "freight_multiplier": freight,
+            "price_mnt": round(price),
+            "reason": f"{market_label} 기준 {reason} 기준가는 보고서 참조가를 MNT로 고정하고, 수수료와 운임/보정 배수를 적용해 산출했습니다.",
+            "formula": f"MNT {ref_price:,.0f} × (1 - {fee_pct:g}%) × {freight:g} = MNT {round(price):,.0f}",
+        })
+
+    return {
+        "final_price_mnt": scenarios[1]["price_mnt"],
+        "rationale": f"가격 기준은 보고서에서 추출한 MNT {ref_price:,.0f}입니다. 숫자 생성은 AI 재추정이 아니라 고정 산식으로 계산해 같은 보고서와 같은 시장 유형에서는 반복 실행해도 동일하게 산출됩니다. 환율은 보조 표시용으로만 쓰며, 최종 기준 통화는 MNT입니다.",
+        "scenarios": scenarios,
+        "pricing_logic": "기준가(MNT) × (1 - 수수료%) × 운임/보정 배수 + 추가 옵션",
+        "exchange_rates": exchange_rates,
+    }
+
 
 _p2_ai_task: dict[str, Any] = {}
 
@@ -813,9 +970,18 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
             "level": "success",
         })
 
-        # ── Step 4: Claude Haiku — 최종 가격 전략 분석 ──────────────────────────
-        _p2_ai_task.update({"step": "ai_analysis", "step_label": "AI 최종 분석 중…"})
-        await _emit({"phase": "p2_pipeline", "message": "Claude Haiku — 최종 가격 전략 분석", "level": "info"})
+        extracted = _normalize_p2_extracted_price(extracted, pdf_text, exchange_rates)
+        _p2_ai_task["extracted"] = extracted
+        if extracted.get("ref_price_mnt"):
+            await _emit({
+                "phase": "p2_pipeline",
+                "message": f"가격 기준 확정 — MNT {float(extracted['ref_price_mnt']):,.0f}",
+                "level": "success",
+            })
+
+        # ── Step 4: 결정형 가격 산식 적용 ─────────────────────────────────────
+        _p2_ai_task.update({"step": "ai_analysis", "step_label": "가격 산식 적용 중…"})
+        await _emit({"phase": "p2_pipeline", "message": "결정형 가격 산식 적용", "level": "info"})
 
         ref_price    = extracted.get("ref_price_mnt") or 0
         ref_display  = f"MNT {float(ref_price):,.0f}" if ref_price else (extracted.get("ref_price_text") or "미확인")
@@ -857,37 +1023,7 @@ async def _run_p2_ai_pipeline(report_path: str, market: str) -> None:
 
 참조가가 미확인이라면 시장 데이터·경쟁사·제품 특성을 기반으로 합리적인 가격을 추정하세요."""
 
-        analysis_resp = await asyncio.to_thread(
-            lambda: client.messages.create(
-                model="claude-haiku-4-5-20251001",
-                max_tokens=2048,
-                messages=[{"role": "user", "content": analysis_prompt}],
-            )
-        )
-
-        analysis: dict[str, Any] = {}
-        try:
-            raw_analysis = analysis_resp.content[0].text
-            m_json2 = re.search(r"\{.*\}", raw_analysis, re.S)
-            if m_json2:
-                analysis = json.loads(m_json2.group(0))
-        except Exception:
-            final_est = (ref_price * 0.30) if ref_price else 0
-            analysis = {
-                "final_price_mnt": round(final_est),
-                "rationale": "AI 응답 파싱 중 오류가 발생했습니다. 기본값 30% 비율로 산정합니다.",
-                "scenarios": [
-                    {"name": "공격", "price_mnt": round(final_est * 0.88),
-                     "reason": "저마진 포지셔닝 — 시장 진입 초기, 자사가 손해를 감수하며 가격경쟁력을 앞세워 점유율을 선점합니다.",
-                     "formula": f"MNT {final_est:,.0f} × 0.88 = MNT {round(final_est * 0.88):,.0f}"},
-                    {"name": "평균", "price_mnt": round(final_est),
-                     "reason": "중간 포지셔닝 — 리스크와 마진의 균형을 유지하는 기본 산정가입니다.",
-                     "formula": f"MNT {final_est:,.0f} (기준가 그대로)"},
-                    {"name": "보수", "price_mnt": round(final_est * 1.12),
-                     "reason": "고마진 포지셔닝 — 자사 제품이 시장 내 자리를 잡은 이후 마진율을 높여 이익 확대를 노립니다.",
-                     "formula": f"MNT {final_est:,.0f} × 1.12 = MNT {round(final_est * 1.12):,.0f}"},
-                ],
-            }
+        analysis = _build_p2_price_analysis(extracted, exchange_rates, market)
 
         _p2_ai_task["analysis"] = analysis
         _final_price_for_log = float(analysis.get("final_price_mnt") or analysis.get("final_price_sgd") or 0)
