@@ -4,7 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>몽골 수출 적합성 분석 — UPharma Export AI</title>
-  <link rel="stylesheet" href="/static/style.css?v=22"/>
+  <link rel="stylesheet" href="/static/style.css?v=23"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 </head>
@@ -321,6 +321,12 @@
                 <span class="report-loading-spinner"></span>
                 <span style="font-size:12px;color:var(--muted);">바이어 발굴 중…</span>
               </div>
+              <div class="progress-row" id="p3-progress-row">
+                <div class="prog-step" id="p3prog-crawl"><div class="prog-dot">1</div><div class="prog-label">후보 수집</div></div>
+                <div class="prog-step" id="p3prog-enrich"><div class="prog-dot">2</div><div class="prog-label">실사 조사</div></div>
+                <div class="prog-step" id="p3prog-rank"><div class="prog-dot">3</div><div class="prog-label">랭킹</div></div>
+                <div class="prog-step" id="p3prog-report"><div class="prog-dot">4</div><div class="prog-label">PDF 생성</div></div>
+              </div>
               <div id="p3-error-msg" class="p2-note" style="display:none;color:var(--red);margin-top:10px;"></div>
             </div>
 
@@ -344,6 +350,9 @@
                   </div>
                 </div>
                 <div class="p3-report-bar" id="p3-report-bar" style="display:none;">
+                  <button class="btn-final-report" id="p3-dl-btn" onclick="downloadBuyerReport()" disabled>
+                    ↓ 바이어 PDF 다운로드
+                  </button>
                   <button class="btn-final-report" id="btn-final-report" onclick="downloadCombinedReport()">
                     ↓ 최종 보고서 다운로드
                   </button>
@@ -468,7 +477,7 @@
   </button>
 </div>
 
-<script src="/static/app.js?v=22"></script>
+<script src="/static/app.js?v=23"></script>
 <script>
 function toggleManual() {
   var body  = document.getElementById('manual-body');

@@ -70,6 +70,22 @@ PRODUCT_SEARCH_MAP: dict[str, dict[str, list[str]]] = {
     },
 }
 
+PRODUCT_KEY_ALIASES: dict[str, str] = {
+    "MN_sereterol_activair": "SG_sereterol_activair",
+    "MN_omethyl_omega3_2g": "SG_omethyl_omega3_2g",
+    "MN_hydrine_hydroxyurea_500": "SG_hydrine_hydroxyurea_500",
+    "MN_gadvoa_gadobutrol_604": "SG_gadvoa_gadobutrol_604",
+    "MN_rosumeg_combigel": "SG_rosumeg_combigel",
+    "MN_atmeg_combigel": "SG_atmeg_combigel",
+    "MN_ciloduo_cilosta_rosuva": "SG_ciloduo_cilosta_rosuva",
+    "MN_gastiin_cr_mosapride": "SG_gastiin_cr_mosapride",
+}
+
+
+def get_product_search_conf(product_key: str) -> dict[str, list[str]]:
+    key = PRODUCT_KEY_ALIASES.get(product_key, product_key)
+    return PRODUCT_SEARCH_MAP.get(key, {"ingredients": [], "therapeutic": []})
+
 # 보충 수집 시 국가 필터를 적용하지 않음.
 # Perplexity 실시간 검색이 target_country 관련성을 판단하므로
 # CPHI에서는 성분 매칭 기업을 최대한 확보하는 것이 목표.
@@ -309,10 +325,7 @@ async def crawl(
         if emit:
             await emit(msg)
 
-    search_conf = PRODUCT_SEARCH_MAP.get(product_key, {
-        "ingredients": [],
-        "therapeutic": [],
-    })
+    search_conf = get_product_search_conf(product_key)
     ingredient_kws  = search_conf["ingredients"]
     therapeutic_kws = search_conf["therapeutic"]
 

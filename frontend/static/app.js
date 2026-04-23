@@ -122,11 +122,21 @@ function _initPreviewPage() {
     return;
   }
   const el = document.getElementById('preview-map');
-  if (!el || typeof L === 'undefined') return;
+  if (!el) return;
+  if (typeof L === 'undefined') {
+    el.innerHTML = `
+      <div class="preview-map-fallback">
+        <div class="pmf-country">Mongolia</div>
+        <div class="pmf-marker" title="Ulaanbaatar"></div>
+        <div class="pmf-label">Ulaanbaatar</div>
+      </div>`;
+    return;
+  }
   if (el.offsetWidth === 0) {
     setTimeout(_initPreviewPage, 180);
     return;
   }
+  el.innerHTML = '';
   _previewMap = L.map('preview-map', { zoomControl: true }).setView([46.8625, 103.8467], 5);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap | © Leaflet',
@@ -162,9 +172,9 @@ async function loadPreviewNews() {
       const meta = [item.source, item.date].filter(Boolean).join(' · ');
       const link = item.link || '#';
       const safeLink = /^https?:\/\//.test(link) ? link : '#';
-      return `<a class="news-item irow" href="${_escHtml(safeLink)}" target="_blank" rel="noopener noreferrer">
-        <div class="tit">${_escHtml(title)}</div>
-        <div class="sub">${_escHtml(meta || 'Mongolia pharma market')}</div>
+      return `<a class="pvnews-item" href="${_escHtml(safeLink)}" target="_blank" rel="noopener noreferrer">
+        <div class="pvnews-title">${_escHtml(title)}</div>
+        <div class="pvnews-source">${_escHtml(meta || 'Mongolia pharma market')}</div>
       </a>`;
     }).join('');
   } catch (_) {
@@ -2122,16 +2132,62 @@ const P3_STEP_MAP = {
   rank:   'rank',
   report: 'report',
 };
+const P3_STEP_ORDER = ['crawl', 'enrich', 'rank', 'report'];
 
 function _setP3Progress(stepId, state) {
-  const el = document.getElementById('p3prog-' + stepId);
-  if (!el) return;
-  el.classList.remove('running', 'done', 'error');
-  if (state) el.classList.add(state);
+  const row = document.getElementById('p3-progress-row');
+  if (row) row.classList.add('visible');
+  const idx = P3_STEP_ORDER.indexOf(stepId);
+  for (let i = 0; i < P3_STEP_ORDER.length; i++) {
+    const el = document.getElementById('p3prog-' + P3_STEP_ORDER[i]);
+    if (!el) continue;
+    const dot = el.querySelector('.prog-dot');
+    if (state === 'error' && i === idx) {
+      el.className = 'prog-step error';
+      if (dot) dot.textContent = '✕';
+    } else if (i < idx || (state === 'done' && i === idx)) {
+      el.className = 'prog-step done';
+      if (dot) dot.textContent = '✓';
+    } else if (i === idx) {
+      el.className = 'prog-step active';
+      if (dot) dot.textContent = i + 1;
+    } else {
+      el.className = 'prog-step';
+      if (dot) dot.textContent = i + 1;
+    }
+  }
 }
 
 function _resetP3Progress() {
-  for (const s of ['crawl', 'enrich', 'rank', 'report']) _setP3Progress(s, '');
+  const row = document.getElementById('p3-progress-row');
+  if (row) row.classList.remove('visible');
+  P3_STEP_ORDER.forEach((s, i) => {
+    const el = document.getElementById('p3prog-' + s);
+    if (!el) return;
+    el.className = 'prog-step';
+    const dot = el.querySelector('.prog-dot');
+    if (dot) dot.textContent = i + 1;
+  });
+}
+
+function _getP3Criteria() {
+  return [...document.querySelectorAll('.p3-cb:checked')]
+    .map(cb => cb.dataset.key || cb.value)
+    .filter(Boolean);
+}
+
+function _setP3ResultChrome(visible) {
+  for (const id of ['p3-criteria-box', 'p3-report-bar', 'p3-cards-title']) {
+    const el = document.getElementById(id);
+    if (el) el.style.display = visible ? '' : 'none';
+  }
+  const dlBtn = document.getElementById('p3-dl-btn');
+  if (dlBtn) dlBtn.disabled = !visible || !_p3PdfName;
+}
+
+function p3ClearAll() {
+  document.querySelectorAll('.p3-cb').forEach(cb => { cb.checked = false; });
+  p3ReRank();
 }
 
 async function runP3Pipeline() {
@@ -2149,6 +2205,8 @@ async function runP3Pipeline() {
   if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
   if (resultSection) resultSection.style.display = 'none';
   if (skelEl) skelEl.style.display = '';
+  _p3PdfName = null;
+  _setP3ResultChrome(false);
   _showP3Loading();
   _resetP3Progress();
   _setP3Progress('crawl', 'running');
@@ -2157,7 +2215,7 @@ async function runP3Pipeline() {
     const pSel = document.getElementById('product-select');
     if (pSel && productFromReport) pSel.value = productFromReport;
 
-    const checked = [...document.querySelectorAll('.p3-cb:checked')].map(cb => cb.value);
+    const checked = _getP3Criteria();
     const res = await fetch('/api/buyers/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2186,7 +2244,7 @@ async function _pollP3() {
     const data = await res.json();
 
     // 진행 단계 반영
-    const stepOrder = ['crawl', 'enrich', 'rank', 'report'];
+    const stepOrder = P3_STEP_ORDER;
     const idx = stepOrder.indexOf(data.step);
     if (idx >= 0) {
       for (let i = 0; i < idx; i++)    _setP3Progress(stepOrder[i], 'done');
@@ -2203,6 +2261,7 @@ async function _pollP3() {
       _p3Buyers  = result.buyers || [];
       _p3PdfName = result.pdf || null;
       _renderP3Cards(_p3Buyers);
+      _setP3ResultChrome(true);
       document.getElementById('p3-result-section').style.display = '';
       const skelEl = document.getElementById('p3-skel');
       if (skelEl) skelEl.style.display = 'none';
@@ -2235,7 +2294,7 @@ async function _pollP3() {
 /** 체크박스 변경 → 서버에 재랭킹 요청 */
 async function p3ReRank() {
   if (!_p3Buyers.length) return;
-  const checked = [...document.querySelectorAll('.p3-cb:checked')].map(cb => cb.value);
+  const checked = _getP3Criteria();
   try {
     const res = await fetch('/api/buyers/rerank', {
       method: 'POST',
@@ -2500,6 +2559,8 @@ loadExchange();         // 환율 (존재하는 경우만)
 setInterval(() => { loadExchange(); }, 10000);
 loadMacro();            // 거시 지표
 loadNews();             // 뉴스
+_initPreviewPage();     // 첫 화면 지도
+loadPreviewNews();      // 첫 화면 뉴스
 initP2Strategy();       // P2 드롭다운 _p2Ready 설정 — renderReportTab보다 먼저
 renderReportTab();      // 보고서 탭 + 드롭다운 동기화
 

@@ -20,6 +20,7 @@ SCORE_CRITERIA = [
     {"key": "파트너적합성", "label": "파트너 적합성"},
     {"key": "한국거래",     "label": "한국 거래 경험"},
     {"key": "MAH가능",      "label": "MAH 가능"},
+    {"key": "pharmacy_chain", "label": "약국체인 운영"},
 ]
 
 
@@ -115,6 +116,7 @@ def compute_scores(company: dict[str, Any]) -> dict[str, int]:
         "파트너적합성": partner_s,
         "한국거래":     _korea_score(e.get("korea_experience")),
         "MAH가능":      _bool_score(e.get("mah_capable")),
+        "pharmacy_chain": _bool_score(e.get("has_pharmacy_chain")),
         "타깃국가진출": _bool_score(e.get("has_target_country_presence")),
     }
 
@@ -126,7 +128,7 @@ def rank_companies(
 ) -> list[dict[str, Any]]:
     """
     전체 후보 풀(all_candidates)에서 criteria 기준으로 상위 top_n 선택.
-    composite_score는 내부 정렬용 — 반환 딕셔너리에서 제거.
+    composite_score와 priority는 프론트 카드/PDF에서 그대로 사용한다.
     """
     scored: list[dict[str, Any]] = []
     for c in all_candidates:
@@ -135,19 +137,35 @@ def rank_companies(
         completeness    = _enrichment_completeness(c)
 
         target_presence = scores.get("타깃국가진출", 0)
+        valid_criteria = [k for k in (active_criteria or []) if k in scores]
 
-        if active_criteria:
+        if valid_criteria:
             # criteria 선택 시: 선택 항목 점수 합산
-            criteria_avg = sum(scores.get(k, 0) for k in active_criteria) / len(active_criteria)
+            criteria_avg = sum(scores.get(k, 0) for k in valid_criteria) / len(valid_criteria)
+            composite_score = round(
+                criteria_avg * 0.70
+                + target_presence * 0.15
+                + (100 if ingredient_match else 0) * 0.10
+                + completeness * 0.05,
+                1,
+            )
             # tie-break: 타깃국가 진출 여부 → 성분 매칭 → 완성도
-            sort_key = (criteria_avg, target_presence, 10 if ingredient_match else 0, completeness)
+            sort_key = (composite_score, target_presence, 10 if ingredient_match else 0, completeness)
         else:
             # criteria 없음: 타깃국가 진출 → 성분 매칭 → enrichment 완성도 순
+            composite_score = round(
+                target_presence * 0.45
+                + (100 if ingredient_match else 0) * 0.35
+                + completeness * 0.20,
+                1,
+            )
             sort_key = (target_presence, 100 if ingredient_match else 0, completeness, 0)
 
         scored.append({
             **c,
             "scores": scores,
+            "priority": 1 if ingredient_match else 2,
+            "composite_score": composite_score,
             "_sort_key": sort_key,
         })
 
@@ -156,8 +174,6 @@ def rank_companies(
     result = []
     for item in scored[:top_n]:
         item.pop("_sort_key", None)
-        # composite_score 제거 (외부 노출 금지)
-        item.pop("composite_score", None)
         result.append(item)
 
     return result
