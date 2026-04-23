@@ -2190,6 +2190,30 @@ function p3ClearAll() {
   p3ReRank();
 }
 
+async function loadExistingP3Result() {
+  const resultSection = document.getElementById('p3-result-section');
+  const cards = document.getElementById('p3-cards');
+  if (!resultSection || !cards) return;
+  try {
+    const statusRes = await fetch('/api/buyers/status');
+    const status = await statusRes.json();
+    if (status.status !== 'done' || !status.buyer_count) return;
+
+    const resultRes = await fetch('/api/buyers/result');
+    const result = await resultRes.json();
+    _p3Buyers = result.buyers || [];
+    _p3PdfName = result.pdf || null;
+    _renderP3Cards(_p3Buyers);
+    _setP3ResultChrome(true);
+    resultSection.style.display = '';
+    for (const s of P3_STEP_ORDER) _setP3Progress(s, 'done');
+    const dlBtn = document.getElementById('p3-dl-btn');
+    if (dlBtn && _p3PdfName) dlBtn.disabled = false;
+  } catch (e) {
+    console.warn('기존 바이어 결과 로드 실패:', e);
+  }
+}
+
 async function runP3Pipeline() {
   const btn     = document.getElementById('btn-p3-run');
   const icon    = document.getElementById('p3-run-icon');
@@ -2568,4 +2592,5 @@ renderReportTab();      // 보고서 탭 + 드롭다운 동기화
   const p1Select = document.getElementById('product-select');
   if (p1Select) p1Select.addEventListener('change', _syncP3ProductLabel);
   _syncP3ProductLabel();
+  loadExistingP3Result();
 })();

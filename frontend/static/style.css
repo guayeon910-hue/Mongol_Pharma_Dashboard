@@ -2133,9 +2133,17 @@ select:focus { box-shadow: 0 0 0 3px rgba(23,63,120,.15); }
   display: flex; gap: 4px; flex-shrink: 0; flex-wrap: nowrap;
 }
 
-/* 구 카드 스타일 (호환용 — 더 이상 사용 안 함) */
+/* 바이어 카드 */
 .p3-card {
-  display: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid rgba(23,63,120,.1);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 1px 4px rgba(23,63,120,.05);
+  min-height: 112px;
 }
 .p3-card-top { display: flex; align-items: center; gap: 6px; }
 .p3-card-score {
