@@ -118,7 +118,7 @@ async function loadMacro() {
       byLabel[key] = c;
     }
 
-    const gdp = byLabel['1인당 GDP'] || byLabel['국가 GDP'] || null;
+    const gdp = byLabel['일인당 GDP'] || byLabel['1인당 GDP'] || byLabel['국가 GDP'] || null;
     const pop = byLabel['인구'] || null;
     const pharma = byLabel['의약품 시장'] || byLabel['의약품 시장 규모'] || null;
     const growth = byLabel['실질 성장률'] || null;

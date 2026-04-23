@@ -44,7 +44,7 @@ MN_MACRO: dict[str, Any] = {
 
 # 대시보드 카드용 정적 폴백
 _STATIC_MACRO_CARDS: list[dict] = [
-    {"label": "1인당 GDP",      "value": "$4,200",     "sub": "2024  ·  IMF WEO"},
+    {"label": "일인당 GDP",     "value": "$4,200",     "sub": "2024  ·  IMF WEO"},
     {"label": "인구",           "value": "340만 명",    "sub": "2024  ·  UN WPP"},
     {"label": "의약품 시장",    "value": "$1.5억",      "sub": "2024  ·  추정 (수입 74.2%)"},
     {"label": "실질 성장률",    "value": "5.0%",        "sub": "2024  ·  IMF"},
