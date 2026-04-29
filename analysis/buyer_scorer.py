@@ -135,6 +135,8 @@ def rank_companies(
         scores = compute_scores(c)
         ingredient_match = c.get("ingredient_match", False)
         completeness    = _enrichment_completeness(c)
+        verified_mn     = 1 if c.get("source_region") == "verified_mn_buyer" else 0
+        contact_quality = int(c.get("enriched", {}).get("contact_quality") or 0)
 
         target_presence = scores.get("타깃국가진출", 0)
         valid_criteria = [k for k in (active_criteria or []) if k in scores]
@@ -150,7 +152,14 @@ def rank_companies(
                 1,
             )
             # tie-break: 타깃국가 진출 여부 → 성분 매칭 → 완성도
-            sort_key = (composite_score, target_presence, 10 if ingredient_match else 0, completeness)
+            sort_key = (
+                verified_mn,
+                composite_score,
+                target_presence,
+                contact_quality,
+                10 if ingredient_match else 0,
+                completeness,
+            )
         else:
             # criteria 없음: 타깃국가 진출 → 성분 매칭 → enrichment 완성도 순
             composite_score = round(
@@ -159,12 +168,19 @@ def rank_companies(
                 + completeness * 0.20,
                 1,
             )
-            sort_key = (target_presence, 100 if ingredient_match else 0, completeness, 0)
+            sort_key = (
+                verified_mn,
+                target_presence,
+                contact_quality,
+                100 if ingredient_match else 0,
+                completeness,
+                0,
+            )
 
         scored.append({
             **c,
             "scores": scores,
-            "priority": 1 if ingredient_match else 2,
+            "priority": 1 if (verified_mn or ingredient_match) else 2,
             "composite_score": composite_score,
             "_sort_key": sort_key,
         })

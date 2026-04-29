@@ -1302,6 +1302,7 @@ class BuyerRunBody(BaseModel):
     active_criteria: list[str] | None = None
     target_country:  str = "Mongolia"
     target_region:   str = "Asia"
+    candidate_pool:  int = 20
 
 
 async def _run_buyer_pipeline(
@@ -1309,6 +1310,7 @@ async def _run_buyer_pipeline(
     active_criteria: list[str] | None = None,
     target_country: str = "Mongolia",
     target_region: str = "Asia",
+    candidate_pool: int = 20,
 ) -> None:
     global _buyer_task
     product_key = _normalize_product_key(product_key)
@@ -1323,12 +1325,33 @@ async def _run_buyer_pipeline(
         _buyer_task.update({"step": "crawl", "step_label": "CPHI 크롤링 중…"})
         await _log(f"바이어 발굴 시작 — 품목: {product_label} / 타깃: {target_country} ({target_region})")
 
+        verified_mn_buyers: list[dict[str, Any]] = []
+        if target_country.strip().lower() == "mongolia":
+            from utils.mn_buyer_sources import get_verified_mn_buyers
+            verified_mn_buyers = get_verified_mn_buyers(product_key, product_label)
+            await _log(f"검증된 몽골 현지 바이어 {len(verified_mn_buyers)}개 선적재", "success")
+
         from utils.cphi_crawler import crawl as cphi_crawl
-        companies = await cphi_crawl(
-            product_key=product_key,
-            candidate_pool=20,
-            emit=_log,
-        )
+        candidate_pool = max(1, min(int(candidate_pool or 20), 40))
+        cphi_pool = max(candidate_pool - len(verified_mn_buyers), 0) if verified_mn_buyers else candidate_pool
+        if cphi_pool:
+            try:
+                cphi_companies = await cphi_crawl(
+                    product_key=product_key,
+                    candidate_pool=cphi_pool,
+                    emit=_log,
+                )
+            except Exception as exc:
+                cphi_companies = []
+                await _log(f"CPHI 수집 실패 — 현지 검증 바이어로 계속 진행: {exc}", "warn")
+        else:
+            cphi_companies = []
+
+        if verified_mn_buyers:
+            from utils.mn_buyer_sources import merge_buyer_candidates
+            companies = merge_buyer_candidates(verified_mn_buyers, cphi_companies, limit=candidate_pool)
+        else:
+            companies = cphi_companies
         _buyer_task["crawl_count"] = len(companies)
         await _log(f"1차 수집 완료 — {len(companies)}개 후보", "success")
 
@@ -1399,6 +1422,7 @@ async def trigger_buyers(body: BuyerRunBody | None = None) -> JSONResponse:
         req.active_criteria,
         req.target_country,
         req.target_region,
+        req.candidate_pool,
     ))
     return JSONResponse({"ok": True})
 

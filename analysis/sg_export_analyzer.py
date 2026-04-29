@@ -42,6 +42,32 @@ from utils.pbs_pricing import fetch_pbs_pricing
 
 _meta_cache: list[dict[str, Any]] | None = None
 
+_LEGACY_PRODUCT_ID_MAP: dict[str, str] = {
+    "sereterol-activair": "MN_sereterol_activair",
+    "omethyl-cutielet": "MN_omethyl_omega3_2g",
+    "hydrine": "MN_hydrine_hydroxyurea_500",
+    "gadvoa-inj": "MN_gadvoa_gadobutrol_604",
+    "rosumeg-combigel": "MN_rosumeg_combigel",
+    "atmeg-combigel": "MN_atmeg_combigel",
+    "ciloduo": "MN_ciloduo_cilosta_rosuva",
+    "gastiin-cr": "MN_gastiin_cr_mosapride",
+    "MN_hydrine_hydroxyurea": "MN_hydrine_hydroxyurea_500",
+    "MN_gadvoa_gadobutrol": "MN_gadvoa_gadobutrol_604",
+    "SG_ciloduo_cilosta_rosuva": "MN_ciloduo_cilosta_rosuva",
+    "SG_rosumeg_combigel": "MN_rosumeg_combigel",
+    "SG_atmeg_combigel": "MN_atmeg_combigel",
+    "SG_gastiin_cr_mosapride": "MN_gastiin_cr_mosapride",
+    "SG_omethyl_omega3_2g": "MN_omethyl_omega3_2g",
+    "SG_hydrine_hydroxyurea_500": "MN_hydrine_hydroxyurea_500",
+    "SG_sereterol_activair": "MN_sereterol_activair",
+    "SG_gadvoa_gadobutrol_604": "MN_gadvoa_gadobutrol_604",
+}
+
+
+def _normalize_product_id(product_id: str) -> str:
+    key = str(product_id or "").strip()
+    return _LEGACY_PRODUCT_ID_MAP.get(key, key)
+
 _FALLBACK_PRODUCT_META: list[dict[str, str]] = [
     # ── 몽골(MN) 품목 ───────────────────────────────────────────────────────
     {
@@ -991,11 +1017,13 @@ async def analyze_product(
     Returns:
         분석 결과 dict (verdict, rationale, key_factors, sources, analyzed_at 포함)
     """
+    requested_product_id = str(product_id or "").strip()
+    product_id = _normalize_product_id(requested_product_id)
     meta = _get_meta_by_pid().get(product_id)
     if meta is None:
         return {
-            "product_id": product_id,
-            "error": f"알 수 없는 product_id: {product_id}",
+            "product_id": requested_product_id or product_id,
+            "error": f"알 수 없는 product_id: {requested_product_id or product_id}",
             "analyzed_at": datetime.now(timezone.utc).isoformat(),
         }
 

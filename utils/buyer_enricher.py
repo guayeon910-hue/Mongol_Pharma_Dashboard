@@ -143,6 +143,12 @@ async def enrich_company(
     emit: Callable[[str], Awaitable[None]] | None = None,
 ) -> dict[str, Any]:
     """단일 기업 심층조사 — CPHI 텍스트 + Perplexity 검증 → Claude Haiku."""
+    if company.get("skip_ai_enrich") and isinstance(company.get("enriched"), dict):
+        enriched = dict(company["enriched"])
+        for k, v in _NULL_ENRICH.items():
+            enriched.setdefault(k, v)
+        return {**company, "enriched": enriched}
+
     name    = company.get("company_name", "-")
     country = company.get("country", "-")
     website = company.get("website", "-")
